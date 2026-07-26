@@ -1,13 +1,7 @@
 {
-  "version": 2,
-  "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/api/ai/pricing-advice",
-      "destination": "/api/ai/pricing-advice"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api/.*).*)",
       "destination": "/index.html"
     }
   ]
