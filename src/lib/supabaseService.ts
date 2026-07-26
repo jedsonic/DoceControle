@@ -162,15 +162,24 @@ function mergeWithLocal<T extends { id: string; name?: string; description?: str
   dbItems: T[],
   localItems: T[]
 ): T[] {
-  const isSeedId = (id: string) => /^i\d+$/.test(id) || /^r\d+$/.test(id) || /^s\d+$/.test(id);
-  const filteredLocal = dbItems.length > 0 ? localItems.filter(item => !isSeedId(item.id)) : localItems;
+  if (dbItems.length === 0) return localItems;
 
+  const isSeedId = (id: string) => /^i\d+$/.test(id) || /^r\d+$/.test(id) || /^s\d+$/.test(id);
   const mapById = new Map<string, T>();
   const mapByName = new Map<string, string>();
 
-  const processItem = (item: T) => {
+  // Supabase items are primary source of truth
+  dbItems.forEach(item => {
+    mapById.set(item.id, item);
     const nameKey = (item.name || item.description || '').trim().toLowerCase();
-    
+    if (nameKey) mapByName.set(nameKey, item.id);
+  });
+
+  // Only merge local non-seed items if strictly newer
+  localItems.forEach(item => {
+    if (isSeedId(item.id)) return;
+
+    const nameKey = (item.name || item.description || '').trim().toLowerCase();
     let existingId = item.id;
     if (!mapById.has(existingId) && nameKey && mapByName.has(nameKey)) {
       existingId = mapByName.get(nameKey)!;
@@ -179,24 +188,17 @@ function mergeWithLocal<T extends { id: string; name?: string; description?: str
     const existing = mapById.get(existingId);
     if (!existing) {
       mapById.set(item.id, item);
-      if (nameKey) mapByName.set(nameKey, item.id);
     } else {
       const existingTime = new Date(existing.updatedAt || 0).getTime();
       const itemTime = new Date(item.updatedAt || 0).getTime();
-      const isItemSeed = item.updatedAt?.startsWith('2020-01-01');
-      
-      if (!isItemSeed && !isNaN(itemTime) && itemTime > existingTime) {
+      if (!isNaN(itemTime) && itemTime > existingTime) {
         if (existing.id !== item.id) {
           mapById.delete(existing.id);
         }
         mapById.set(item.id, item);
-        if (nameKey) mapByName.set(nameKey, item.id);
       }
     }
-  };
-
-  dbItems.forEach(processItem);
-  filteredLocal.forEach(processItem);
+  });
 
   return Array.from(mapById.values());
 }
@@ -229,15 +231,8 @@ export class SupabaseService {
           workHoursCapacity: Number(data.work_hours_capacity),
           updatedAt: data.updated_at,
         };
-        const localTime = new Date(localCost.updatedAt || 0).getTime();
-        const dbTime = new Date(dbCost.updatedAt || 0).getTime();
-        
-        // Se a configuracao local for padrao (2020-01-01) ou se o banco for mais recente/valido, atualiza o cache local com os dados do banco
-        if (localCost.updatedAt?.startsWith('2020-01-01') || isNaN(localTime) || dbTime >= localTime) {
-          StorageService.saveIndirectCosts(userId, dbCost);
-          return dbCost;
-        }
-        return localCost;
+        StorageService.saveIndirectCosts(userId, dbCost);
+        return dbCost;
       }
     } catch (e) {
       // Fallback
@@ -275,7 +270,9 @@ export class SupabaseService {
         .order('description');
       if (!error && data) {
         const dbInsumos = (data ?? []).map(fromDbInsumo);
-        return mergeWithLocal(dbInsumos, localInsumos).sort((a, b) => a.description.localeCompare(b.description));
+        const merged = mergeWithLocal(dbInsumos, localInsumos).sort((a, b) => a.description.localeCompare(b.description));
+        StorageService.saveInsumosRaw(userId, merged);
+        return merged;
       }
     } catch (e) {
       // Fallback
@@ -292,7 +289,9 @@ export class SupabaseService {
         .select()
         .single();
       if (!error && data) {
-        return fromDbInsumo(data);
+        const result = fromDbInsumo(data);
+        StorageService.saveInsumo(userId, result);
+        return result;
       }
     } catch (err) {
       console.warn('Supabase saveInsumo warning (salvo localmente):', err);
@@ -325,7 +324,9 @@ export class SupabaseService {
         .order('name');
       if (!error && data) {
         const dbRecipes = (data ?? []).map(fromDbReceita);
-        return mergeWithLocal(dbRecipes, localRecipes).sort((a, b) => a.name.localeCompare(b.name));
+        const merged = mergeWithLocal(dbRecipes, localRecipes).sort((a, b) => a.name.localeCompare(b.name));
+        StorageService.saveRecipesRaw(userId, merged);
+        return merged;
       }
     } catch (e) {
       console.warn('Supabase getAllRecipes fallback local:', e);
@@ -342,7 +343,9 @@ export class SupabaseService {
         .select()
         .single();
       if (!error && data) {
-        return fromDbReceita(data);
+        const result = fromDbReceita(data);
+        StorageService.saveRecipe(userId, result);
+        return result;
       }
     } catch (err) {
       console.warn('Supabase saveRecipe warning (salvo localmente):', err);
@@ -375,7 +378,9 @@ export class SupabaseService {
         .order('updated_at', { ascending: false });
       if (!error && data) {
         const dbLots = (data ?? []).map(fromDbLote);
-        return mergeWithLocal(dbLots, localLots).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        const merged = mergeWithLocal(dbLots, localLots).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        StorageService.saveLotsRaw(userId, merged);
+        return merged;
       }
     } catch (e) {
       console.warn('Supabase getAllLots fallback local:', e);

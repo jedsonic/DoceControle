@@ -230,6 +230,11 @@ export const StorageService = {
     const filtered = all.filter(x => x.userId !== userId);
     setLocal(STOCK_KEY, [...filtered, ...data]);
   },
+  saveLotsRaw(userId: string, data: ProductionLot[]) {
+    const all = getLocal<ProductionLot[]>(LOTS_KEY, []);
+    const filtered = all.filter(x => x.userId !== userId);
+    setLocal(LOTS_KEY, [...filtered, ...data]);
+  },
   saveSalesRaw(userId: string, data: Sale[]) {
     const all = getLocal<Sale[]>(SALES_KEY, []);
     const filtered = all.filter(x => x.userId !== userId);
