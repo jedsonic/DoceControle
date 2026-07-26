@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ProductionLot, Recipe, Insumo, ExtraCost } from '../types';
+import { ProductionLot, Recipe, Insumo, ExtraCost, IndirectCostsConfig } from '../types';
 import { DataService } from '../lib/dataService';
 import { Search, Plus, Save, Sparkles, AlertCircle, PlayCircle, CheckCircle, Package, ArrowRight, ArrowLeft, PlusCircle, Trash, X } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -14,6 +14,7 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
   const [lots, setLots] = useState<ProductionLot[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [insumos, setInsumos] = useState<Insumo[]>([]);
+  const [indirectConfig, setIndirectConfig] = useState<IndirectCostsConfig | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingLot, setEditingLot] = useState<ProductionLot | null>(null);
@@ -48,14 +49,16 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
   }, [userId]);
 
   const loadData = async () => {
-    const [lotData, recipeData, insumoData] = await Promise.all([
+    const [lotData, recipeData, insumoData, indirectData] = await Promise.all([
       DataService.getAllLots(userId),
       DataService.getAllRecipes(userId),
       DataService.getAllInsumos(userId),
+      DataService.getIndirectCosts(userId),
     ]);
     setLots(lotData);
     setRecipes(recipeData);
     setInsumos(insumoData);
+    setIndirectConfig(indirectData);
   };
 
   const handleRecipeChange = (selectedRecipeId: string) => {
@@ -74,10 +77,7 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
     setRecipeId('');
     setName('');
     setYieldActual('1');
-    setExtraCosts([
-      { name: 'Embalagem e Etiqueta', value: 3.50 },
-      { name: 'Gás e Energia', value: 2.00 }
-    ]); // standard starters for gourmet confectioners
+    setExtraCosts([]);
     setFinalPrice('');
     setExtraName('');
     setExtraValue('');
@@ -120,6 +120,13 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
   };
 
   // Pricing calculations
+  const getHourlyRate = (): number => {
+    if (!indirectConfig) return 0;
+    const total = (indirectConfig.proLabore || 0) + (indirectConfig.utilities || 0) + (indirectConfig.cleaningAndSupport || 0) + (indirectConfig.otherExpenses || 0);
+    const cap = indirectConfig.workHoursCapacity > 0 ? indirectConfig.workHoursCapacity : 160;
+    return total / cap;
+  };
+
   const getRecipeIngredientsCost = (): number => {
     const recipe = recipes.find(r => r.id === recipeId);
     if (!recipe) return 0;
@@ -132,8 +139,18 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
     }, 0);
 
     const targetYield = parseFloat(yieldActual) || 1;
-    const scale = targetYield / recipe.yieldAmount;
+    const scale = targetYield / (recipe.yieldAmount || 1);
     return baseRecipeCost * scale;
+  };
+
+  const getRecipeIndirectCost = (): number => {
+    const recipe = recipes.find(r => r.id === recipeId);
+    if (!recipe) return 0;
+
+    const targetYield = parseFloat(yieldActual) || 1;
+    const scale = targetYield / (recipe.yieldAmount || 1);
+    const recipeHours = recipe.productionHours || 1.0;
+    return recipeHours * scale * getHourlyRate();
   };
 
   const getExtraCostsTotal = (): number => {
@@ -141,7 +158,7 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
   };
 
   const getTotalCost = (): number => {
-    return getRecipeIngredientsCost() + getExtraCostsTotal();
+    return getRecipeIngredientsCost() + getRecipeIndirectCost() + getExtraCostsTotal();
   };
 
   const getCostUnit = (): number => {
@@ -166,6 +183,7 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
     }
 
     const costIngredients = getRecipeIngredientsCost();
+    const costIndirect = getRecipeIndirectCost();
     const costTotal = getTotalCost();
     const costUnit = getCostUnit();
     const suggestedPrice = getSuggestedPrice();
@@ -177,6 +195,7 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
       name: name.trim(),
       yieldActual: parseFloat(yieldActual),
       costIngredients,
+      costIndirect,
       costExtra: extraCosts,
       costTotal,
       costUnit,
@@ -650,17 +669,21 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
                     Calculadora de Preço de Venda (Regra 40/40/20)
                   </h3>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5 border-b border-white/10 pb-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 border-b border-white/10 pb-4">
                     <div>
-                      <span className="text-[10px] text-white/50 block uppercase tracking-wider">Custo dos Ingredientes</span>
+                      <span className="text-[10px] text-white/60 block uppercase tracking-wider font-medium">Custo dos Ingredientes</span>
                       <span className="font-mono font-bold text-base text-white">R$ {getRecipeIngredientsCost().toFixed(2)}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-white/50 block uppercase tracking-wider">Custos Extras</span>
+                      <span className="text-[10px] text-purple-300 block uppercase tracking-wider font-semibold">Custos Indiretos</span>
+                      <span className="font-mono font-bold text-base text-purple-300">R$ {getRecipeIndirectCost().toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-white/60 block uppercase tracking-wider font-medium">Custos Extras</span>
                       <span className="font-mono font-bold text-base text-white">R$ {getExtraCostsTotal().toFixed(2)}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-brand-gold block uppercase tracking-wider font-semibold">CUSTO TOTAL DO LOTE</span>
+                      <span className="text-[10px] text-brand-gold block uppercase tracking-wider font-bold">CUSTO TOTAL DO LOTE</span>
                       <span className="font-mono font-extrabold text-lg text-brand-gold">R$ {getTotalCost().toFixed(2)}</span>
                     </div>
                   </div>

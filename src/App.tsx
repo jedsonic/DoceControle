@@ -16,6 +16,7 @@ import FinanceiroScreen from './components/FinanceiroScreen';
 import SupabaseConfigModal from './components/SupabaseConfigModal';
 import FreteConfig from './components/FreteConfig';
 import PublicCatalogScreen from './components/PublicCatalogScreen';
+import CustosIndiretosScreen from './components/CustosIndiretosScreen';
 import { getSupabase } from './lib/supabase';
 
 import { 
@@ -29,11 +30,12 @@ import {
   ShoppingCart, 
   Store,
   Grid,
-  Navigation
+  Navigation,
+  Calculator
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-type ScreenType = 'insumos' | 'receitas' | 'lotes' | 'estoque' | 'pdv' | 'financeiro' | 'frete';
+type ScreenType = 'insumos' | 'receitas' | 'custos' | 'lotes' | 'estoque' | 'pdv' | 'financeiro' | 'frete';
 
 export default function App() {
   const [activeUser, setActiveUser] = useState<User | null>(null);
@@ -84,6 +86,7 @@ export default function App() {
     { id: 'lotes' as ScreenType, label: 'Produção', icon: ChefHat, color: 'text-brand-gold' },
     { id: 'estoque' as ScreenType, label: 'Estoque', icon: ShoppingBag, color: 'text-amber-600' },
     { id: 'receitas' as ScreenType, label: 'Receitas', icon: BookOpen, color: 'text-indigo-500' },
+    { id: 'custos' as ScreenType, label: 'Custos', icon: Calculator, color: 'text-purple-600' },
     { id: 'insumos' as ScreenType, label: 'Insumos', icon: Grid, color: 'text-stone-500' },
     { id: 'financeiro' as ScreenType, label: 'Financeiro', icon: TrendingUp, color: 'text-emerald-600' },
     { id: 'frete' as ScreenType, label: 'Frete', icon: Navigation, color: 'text-brand-rose' }
@@ -94,7 +97,12 @@ export default function App() {
       case 'insumos':
         return <InsumosScreen userId={activeUser.id} />;
       case 'receitas':
-        return <ReceitasScreen userId={activeUser.id} />;
+        return <ReceitasScreen 
+          userId={activeUser.id} 
+          onNavigateToCustos={() => setActiveScreen('custos')}
+        />;
+      case 'custos':
+        return <CustosIndiretosScreen userId={activeUser.id} />;
       case 'lotes':
         return <LotesScreen 
           userId={activeUser.id} 

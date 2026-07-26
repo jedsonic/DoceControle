@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Recipe, Insumo, RecipeIngredient } from '../types';
+import { Recipe, Insumo, RecipeIngredient, IndirectCostsConfig } from '../types';
 import { DataService } from '../lib/dataService';
-import { Search, Plus, Edit2, Trash2, ArrowLeft, Save, Sparkles, BookOpen, Trash, X } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, ArrowLeft, Save, Sparkles, BookOpen, Trash, X, Clock, Calculator } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface ReceitasScreenProps {
   userId: string;
   onBack?: () => void;
+  onNavigateToCustos?: () => void;
 }
 
-export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) {
+export default function ReceitasScreen({ userId, onBack, onNavigateToCustos }: ReceitasScreenProps) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [insumos, setInsumos] = useState<Insumo[]>([]);
+  const [indirectConfig, setIndirectConfig] = useState<IndirectCostsConfig | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
@@ -20,6 +22,7 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
   const [name, setName] = useState('');
   const [yieldAmount, setYieldAmount] = useState('1');
   const [yieldUnit, setYieldUnit] = useState('fatias');
+  const [productionHours, setProductionHours] = useState('1.0');
   const [notes, setNotes] = useState('');
   const [selectedIngredients, setSelectedIngredients] = useState<RecipeIngredient[]>([]);
 
@@ -32,12 +35,21 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
   }, [userId]);
 
   const loadData = async () => {
-    const [recipeData, insumoData] = await Promise.all([
+    const [recipeData, insumoData, indirectData] = await Promise.all([
       DataService.getAllRecipes(userId),
       DataService.getAllInsumos(userId),
+      DataService.getIndirectCosts(userId),
     ]);
     setRecipes(recipeData);
     setInsumos(insumoData);
+    setIndirectConfig(indirectData);
+  };
+
+  const getHourlyRate = (): number => {
+    if (!indirectConfig) return 0;
+    const total = (indirectConfig.proLabore || 0) + (indirectConfig.utilities || 0) + (indirectConfig.cleaningAndSupport || 0) + (indirectConfig.otherExpenses || 0);
+    const cap = indirectConfig.workHoursCapacity > 0 ? indirectConfig.workHoursCapacity : 160;
+    return total / cap;
   };
 
   const startAddRecipe = () => {
@@ -45,6 +57,7 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
     setName('');
     setYieldAmount('1');
     setYieldUnit('unidades');
+    setProductionHours('1.0');
     setNotes('');
     setSelectedIngredients([]);
     setTempInsumoId('');
@@ -57,6 +70,7 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
     setName(recipe.name);
     setYieldAmount(recipe.yieldAmount.toString());
     setYieldUnit(recipe.yieldUnit);
+    setProductionHours((recipe.productionHours || 1.0).toString());
     setNotes(recipe.notes || '');
     setSelectedIngredients([...recipe.ingredients]);
     setTempInsumoId('');
@@ -87,6 +101,16 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
     setTempQuantity('');
   };
 
+  const handleUpdateIngredientQuantity = (index: number, newQtyStr: string) => {
+    const val = parseFloat(newQtyStr);
+    const updated = [...selectedIngredients];
+    updated[index] = {
+      ...updated[index],
+      quantity: isNaN(val) || val < 0 ? 0 : val
+    };
+    setSelectedIngredients(updated);
+  };
+
   const handleRemoveIngredient = (index: number) => {
     const updated = selectedIngredients.filter((_, i) => i !== index);
     setSelectedIngredients(updated);
@@ -105,18 +129,24 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
       return;
     }
 
-    const payload = {
-      id: editingRecipe?.id,
-      name: name.trim(),
-      yieldAmount: parseFloat(yieldAmount),
-      yieldUnit: yieldUnit.trim(),
-      ingredients: selectedIngredients,
-      notes: notes.trim()
-    };
+    try {
+      const payload = {
+        id: editingRecipe?.id,
+        name: name.trim(),
+        yieldAmount: parseFloat(yieldAmount),
+        yieldUnit: yieldUnit.trim(),
+        productionHours: parseFloat(productionHours) || 0,
+        ingredients: selectedIngredients,
+        notes: notes.trim()
+      };
 
-    await DataService.saveRecipe(userId, payload);
-    setIsEditMode(false);
-    loadData();
+      await DataService.saveRecipe(userId, payload);
+    } catch (err) {
+      console.error('Erro ao salvar receita:', err);
+    } finally {
+      setIsEditMode(false);
+      await loadData();
+    }
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -127,13 +157,18 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
     }
   };
 
-  // Cost calculator helper
-  const calculateCost = (ingredientsList: RecipeIngredient[]) => {
+  // Cost calculator helpers
+  const calculateIngredientsCost = (ingredientsList: RecipeIngredient[]) => {
     return ingredientsList.reduce((sum, ing) => {
       const match = insumos.find(i => i.id === ing.insumoId);
       if (!match) return sum;
       return sum + (match.costValue * ing.quantity);
     }, 0);
+  };
+
+  const calculateIndirectCost = (hoursStr: string) => {
+    const h = parseFloat(hoursStr) || 0;
+    return h * getHourlyRate();
   };
 
   // Filter recipes based on query
@@ -200,8 +235,10 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
               </div>
             ) : (
               filteredRecipes.map((recipe) => {
-                const totalRecipeCost = calculateCost(recipe.ingredients);
-                const unitCost = totalRecipeCost / recipe.yieldAmount;
+                const ingCost = calculateIngredientsCost(recipe.ingredients);
+                const indCost = calculateIndirectCost((recipe.productionHours || 1.0).toString());
+                const totalRecipeCost = ingCost + indCost;
+                const unitCost = totalRecipeCost / (recipe.yieldAmount || 1);
                 return (
                   <motion.div
                     key={recipe.id}
@@ -242,12 +279,24 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
                           )}
                         </div>
                       </div>
+
+                      {/* Cost Breakdown Pill */}
+                      <div className="bg-white/30 border border-white/40 rounded-xl p-2 mb-3 text-[11px] grid grid-cols-2 gap-1 text-brand-brown-light">
+                        <div>
+                          <span className="text-[9px] uppercase block text-brand-brown-light/60">Ingredientes:</span>
+                          <span className="font-mono font-bold text-brand-chocolate">R$ {ingCost.toFixed(2)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] uppercase block text-brand-brown-light/60">Custos Indiretos ({recipe.productionHours || 1.0}h):</span>
+                          <span className="font-mono font-bold text-purple-700">R$ {indCost.toFixed(2)}</span>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="border-t border-white/20 pt-3">
                       <div className="flex justify-between items-end mb-3">
                         <div>
-                          <span className="block text-[10px] text-brand-brown-light/60 uppercase">Custo da Receita</span>
+                          <span className="block text-[10px] text-brand-brown-light/60 uppercase">Custo Total da Receita</span>
                           <span className="font-mono font-bold text-base text-brand-chocolate">
                             R$ {totalRecipeCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
@@ -303,8 +352,8 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
           </div>
 
           <form onSubmit={handleSave} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1 md:col-span-1">
                 <label className="text-xs font-semibold text-brand-chocolate uppercase tracking-wider block">
                   Nome da Receita
                 </label>
@@ -318,7 +367,7 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 md:col-span-1">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-brand-chocolate uppercase tracking-wider block">
                     Rendimento Base
@@ -347,6 +396,39 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
                   />
                 </div>
               </div>
+
+              {/* Horas Estimadas de Produção */}
+              <div className="space-y-1 md:col-span-1">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-semibold text-brand-chocolate uppercase tracking-wider flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-purple-600" />
+                    Tempo Produção (Horas)
+                  </label>
+                  {onNavigateToCustos && (
+                    <button
+                      type="button"
+                      onClick={onNavigateToCustos}
+                      className="text-[10px] font-bold text-purple-700 hover:underline flex items-center gap-0.5"
+                    >
+                      <Calculator className="w-3 h-3" /> Config. Hora
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={productionHours}
+                    onChange={(e) => setProductionHours(e.target.value)}
+                    placeholder="Ex: 1.5"
+                    className="w-full px-4 py-3 bg-white/40 border border-white/50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-rose/25 focus:border-brand-rose focus:bg-white/65 transition text-brand-chocolate font-mono font-medium"
+                  />
+                  <span className="absolute right-3 inset-y-0 flex items-center text-xs font-bold text-brand-brown-light">
+                    horas
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-1">
@@ -366,7 +448,7 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
             <div className="border-t border-white/20 pt-4">
               <h3 className="font-bold text-brand-chocolate text-base mb-3 flex items-center gap-1">
                 <span>Composição dos Ingredientes</span>
-                <span className="text-xs text-brand-brown-light font-normal">(monte os ingredientes abaixo)</span>
+                <span className="text-xs text-brand-brown-light font-normal">(adicione e edite as quantidades abaixo)</span>
               </h3>
 
               {/* Ingredient entry form row */}
@@ -419,8 +501,8 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
                 </button>
               </div>
 
-              {/* Added ingredients list with live costs */}
-              <div className="space-y-2 max-h-56 overflow-y-auto mb-4 pr-1">
+              {/* Added ingredients list with inline editable quantities */}
+              <div className="space-y-2 max-h-64 overflow-y-auto mb-4 pr-1">
                 {selectedIngredients.length === 0 ? (
                   <p className="text-xs text-brand-brown-light/70 text-center py-4 italic">
                     Nenhum ingrediente incluído ainda. Adicione insumos acima.
@@ -432,24 +514,42 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
                     return (
                       <div
                         key={index}
-                        className="bg-white/40 border border-white/50 backdrop-blur-xs p-3 rounded-xl flex items-center justify-between gap-4 text-xs shadow-xs"
+                        className="bg-white/40 border border-white/50 backdrop-blur-xs p-3 rounded-xl flex items-center justify-between gap-3 text-xs shadow-xs"
                       >
                         <div className="min-w-0 flex-1">
                           <p className="font-bold text-brand-chocolate truncate">
                             {match ? match.description : 'Ingrediente Excluído'}
                           </p>
-                          <p className="text-[10px] text-brand-brown-light font-mono mt-0.5">
-                            {item.quantity} {match?.unit} x R$ {match?.costValue.toFixed(3)}
+                          <p className="text-[10px] text-brand-brown-light/70 font-mono mt-0.5">
+                            Custo Unitário Insumo: R$ {match?.costValue.toFixed(4)} / {match?.unit}
                           </p>
                         </div>
+
+                        {/* Inline Quantity Editable Field */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            value={item.quantity}
+                            onChange={(e) => handleUpdateIngredientQuantity(index, e.target.value)}
+                            className="w-24 px-2.5 py-1.5 bg-white border border-brand-rose/30 rounded-lg text-xs font-mono font-bold text-brand-chocolate focus:outline-none focus:ring-2 focus:ring-brand-rose/40 shadow-inner"
+                            title="Editar quantidade do ingrediente"
+                          />
+                          <span className="text-[10px] font-bold text-brand-brown-light w-8 truncate">
+                            {match?.unit || ''}
+                          </span>
+                        </div>
+
                         <div className="flex items-center gap-3 shrink-0">
-                          <span className="font-mono font-bold text-brand-chocolate">
+                          <span className="font-mono font-bold text-brand-chocolate text-xs">
                             R$ {itemCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                           <button
                             type="button"
                             onClick={() => handleRemoveIngredient(index)}
                             className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition cursor-pointer"
+                            title="Excluir ingrediente"
                           >
                             <Trash className="w-3.5 h-3.5" />
                           </button>
@@ -461,25 +561,50 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
               </div>
 
               {/* Live Cost Summary Panel */}
-              {selectedIngredients.length > 0 && (
-                <div className="bg-rose-100/35 backdrop-blur-md border border-rose-200/50 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-4 text-sm font-semibold text-brand-chocolate shadow-inner">
-                  <div>
-                    <span className="text-[10px] text-brand-brown-light/70 block uppercase">CUSTO TOTAL DE MATÉRIA-PRIMA DA RECEITA</span>
-                    <span className="font-mono font-extrabold text-lg text-brand-chocolate">
-                      R$ {calculateCost(selectedIngredients).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
+              {selectedIngredients.length > 0 && (() => {
+                const ingTotal = calculateIngredientsCost(selectedIngredients);
+                const indTotal = calculateIndirectCost(productionHours);
+                const grandTotal = ingTotal + indTotal;
+                const unitTotal = grandTotal / (parseFloat(yieldAmount) || 1);
+
+                return (
+                  <div className="bg-rose-100/35 backdrop-blur-md border border-rose-200/50 p-4 rounded-2xl space-y-3 shadow-inner">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs border-b border-rose-200/40 pb-3">
+                      <div>
+                        <span className="text-[10px] text-brand-brown-light/70 block uppercase font-semibold">Custo dos Ingredientes</span>
+                        <span className="font-mono font-bold text-sm text-brand-chocolate">
+                          R$ {ingTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-purple-700/80 block uppercase font-semibold">Custos Indiretos ({productionHours}h)</span>
+                        <span className="font-mono font-bold text-sm text-purple-800">
+                          R$ {indTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[9px] text-brand-brown-light block">
+                          (R$ {getHourlyRate().toFixed(2)}/h operac.)
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-brand-rose block uppercase font-bold">CUSTO TOTAL DA RECEITA</span>
+                        <span className="font-mono font-extrabold text-base text-brand-chocolate">
+                          R$ {grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs font-semibold text-brand-chocolate">
+                      <span>Rendimento: {yieldAmount} {yieldUnit}</span>
+                      <div>
+                        <span className="text-[10px] text-brand-brown-light/70 uppercase mr-1">CUSTO UNITÁRIO TOTAL:</span>
+                        <span className="font-mono font-extrabold text-base text-brand-rose">
+                          R$ {unitTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {yieldUnit}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="sm:text-right">
-                    <span className="text-[10px] text-brand-brown-light/70 block uppercase">CUSTO ESTIMADO UNITÁRIO</span>
-                    <span className="font-mono font-extrabold text-base text-brand-rose">
-                      R$ {(calculateCost(selectedIngredients) / (parseFloat(yieldAmount) || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                    <span className="text-[10px] text-brand-brown-light/80 block">
-                      por {yieldUnit}
-                    </span>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* Actions */}

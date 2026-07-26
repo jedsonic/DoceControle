@@ -1,4 +1,4 @@
-import { Insumo, Recipe, ProductionLot, StockProduct, Sale, User, SupabaseConfig } from '../types';
+import { Insumo, Recipe, ProductionLot, StockProduct, Sale, User, SupabaseConfig, IndirectCostsConfig } from '../types';
 
 // Storage keys
 const USERS_KEY = 'doce_controle_users';
@@ -9,6 +9,7 @@ const LOTS_KEY = 'doce_controle_lots';
 const STOCK_KEY = 'doce_controle_stock';
 const SALES_KEY = 'doce_controle_sales';
 const SUPABASE_KEY = 'doce_controle_supabase_config';
+const INDIRECT_COSTS_KEY = 'doce_controle_indirect_costs';
 
 // Help helper to get items from localStorage
 function getLocal<T>(key: string, defaultValue: T): T {
@@ -55,6 +56,7 @@ const DEFAULT_RECIPES = (userId: string): Recipe[] => [
     name: 'Bolo de Chocolate Brigadeiro Tradicional',
     yieldAmount: 10,
     yieldUnit: 'fatias',
+    productionHours: 2.0,
     ingredients: [
       { insumoId: 'i4', quantity: 300 }, // Trigo
       { insumoId: 'i3', quantity: 200 }, // Açúcar
@@ -74,6 +76,7 @@ const DEFAULT_RECIPES = (userId: string): Recipe[] => [
     name: 'Din-Din Gourmet de Ninho com Nutella',
     yieldAmount: 12,
     yieldUnit: 'unidades',
+    productionHours: 1.0,
     ingredients: [
       { insumoId: 'i1', quantity: 395 }, // 1 lata leite cond.
       { insumoId: 'i2', quantity: 200 }, // 1 cx creme leite
@@ -289,6 +292,47 @@ export const StorageService = {
   },
 
   // --- RECIPES CRUD ---
+  // --- INDIRECT COSTS CONFIG CRUD ---
+  getIndirectCosts(userId: string): IndirectCostsConfig {
+    const all = getLocal<IndirectCostsConfig[]>(INDIRECT_COSTS_KEY, []);
+    const found = all.find(item => item.userId === userId);
+    if (found) return found;
+
+    // Default configuration for new users
+    return {
+      userId,
+      proLabore: 2500,
+      utilities: 400,
+      cleaningAndSupport: 150,
+      otherExpenses: 0,
+      workHoursCapacity: 160,
+      updatedAt: new Date().toISOString()
+    };
+  },
+
+  saveIndirectCosts(userId: string, config: Partial<IndirectCostsConfig>): IndirectCostsConfig {
+    const all = getLocal<IndirectCostsConfig[]>(INDIRECT_COSTS_KEY, []);
+    const now = new Date().toISOString();
+    const current = this.getIndirectCosts(userId);
+    
+    const updated: IndirectCostsConfig = {
+      ...current,
+      ...config,
+      userId,
+      updatedAt: now
+    };
+
+    const index = all.findIndex(item => item.userId === userId);
+    if (index !== -1) {
+      all[index] = updated;
+    } else {
+      all.push(updated);
+    }
+    setLocal(INDIRECT_COSTS_KEY, all);
+    return updated;
+  },
+
+  // --- RECIPES CRUD ---
   getAllRecipes(userId: string): Recipe[] {
     const all = getLocal<Recipe[]>(RECIPES_KEY, []);
     return all.filter(item => item.userId === userId);
@@ -298,31 +342,40 @@ export const StorageService = {
     const all = getLocal<Recipe[]>(RECIPES_KEY, []);
     const now = new Date().toISOString();
     
+    // Find index by ID or by same Name for this user
+    let index = -1;
     if (recipe.id) {
-      const index = all.findIndex(item => item.id === recipe.id && item.userId === userId);
-      if (index !== -1) {
-        const updated: Recipe = {
-          ...all[index],
-          name: recipe.name,
-          yieldAmount: recipe.yieldAmount,
-          yieldUnit: recipe.yieldUnit,
-          ingredients: recipe.ingredients,
-          notes: recipe.notes,
-          updatedAt: now
-        };
-        all[index] = updated;
-        setLocal(RECIPES_KEY, all);
-        return updated;
-      }
+      index = all.findIndex(item => item.userId === userId && item.id === recipe.id);
+    }
+    if (index === -1 && recipe.name) {
+      index = all.findIndex(item => item.userId === userId && item.name.trim().toLowerCase() === recipe.name.trim().toLowerCase());
+    }
+    
+    if (index !== -1) {
+      const updated: Recipe = {
+        ...all[index],
+        id: recipe.id || all[index].id,
+        name: recipe.name,
+        yieldAmount: recipe.yieldAmount,
+        yieldUnit: recipe.yieldUnit,
+        ingredients: recipe.ingredients,
+        productionHours: recipe.productionHours,
+        notes: recipe.notes,
+        updatedAt: now
+      };
+      all[index] = updated;
+      setLocal(RECIPES_KEY, all);
+      return updated;
     }
     
     const newRecipe: Recipe = {
-      id: generateId(),
+      id: recipe.id || generateId(),
       userId,
       name: recipe.name,
       yieldAmount: recipe.yieldAmount,
       yieldUnit: recipe.yieldUnit,
       ingredients: recipe.ingredients,
+      productionHours: recipe.productionHours,
       notes: recipe.notes,
       updatedAt: now
     };
@@ -358,6 +411,7 @@ export const StorageService = {
           recipeId: lot.recipeId,
           yieldActual: lot.yieldActual,
           costIngredients: lot.costIngredients,
+          costIndirect: lot.costIndirect,
           costExtra: lot.costExtra,
           costTotal: lot.costTotal,
           costUnit: lot.costUnit,
@@ -380,6 +434,7 @@ export const StorageService = {
       name: lot.name,
       yieldActual: lot.yieldActual,
       costIngredients: lot.costIngredients,
+      costIndirect: lot.costIndirect,
       costExtra: lot.costExtra,
       costTotal: lot.costTotal,
       costUnit: lot.costUnit,

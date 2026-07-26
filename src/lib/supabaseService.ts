@@ -3,8 +3,8 @@
  * Espelha a interface do StorageService, mas persiste dados na nuvem.
  */
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Insumo, Recipe, ProductionLot, StockProduct, Sale, SaleItem } from '../types';
-import { generateId } from './storage';
+import { Insumo, Recipe, ProductionLot, StockProduct, Sale, SaleItem, IndirectCostsConfig } from '../types';
+import { generateId, StorageService } from './storage';
 
 // ─── Helpers de mapeamento (snake_case ↔ camelCase) ───────────────────────
 
@@ -46,6 +46,7 @@ function toDbReceita(r: Recipe) {
     yield_amount: r.yieldAmount,
     yield_unit: r.yieldUnit,
     ingredients: r.ingredients,
+    production_hours: r.productionHours ?? null,
     notes: r.notes ?? null,
     updated_at: r.updatedAt,
   };
@@ -59,6 +60,7 @@ function fromDbReceita(row: any): Recipe {
     yieldAmount: Number(row.yield_amount),
     yieldUnit: row.yield_unit,
     ingredients: row.ingredients,
+    productionHours: row.production_hours != null ? Number(row.production_hours) : undefined,
     notes: row.notes ?? undefined,
     updatedAt: row.updated_at,
   };
@@ -72,6 +74,7 @@ function toDbLote(l: ProductionLot) {
     name: l.name,
     yield_actual: l.yieldActual,
     cost_ingredients: l.costIngredients,
+    cost_indirect: l.costIndirect ?? null,
     cost_extra: l.costExtra,
     cost_total: l.costTotal,
     cost_unit: l.costUnit,
@@ -91,6 +94,7 @@ function fromDbLote(row: any): ProductionLot {
     name: row.name,
     yieldActual: Number(row.yield_actual),
     costIngredients: Number(row.cost_ingredients),
+    costIndirect: row.cost_indirect != null ? Number(row.cost_indirect) : undefined,
     costExtra: row.cost_extra,
     costTotal: Number(row.cost_total),
     costUnit: Number(row.cost_unit),
@@ -154,6 +158,44 @@ function fromDbVenda(row: any): Sale {
   };
 }
 
+function mergeWithLocal<T extends { id: string; name?: string; description?: string; updatedAt: string }>(
+  dbItems: T[],
+  localItems: T[]
+): T[] {
+  const mapById = new Map<string, T>();
+  const mapByName = new Map<string, string>();
+
+  const processItem = (item: T) => {
+    const nameKey = (item.name || item.description || '').trim().toLowerCase();
+    
+    let existingId = item.id;
+    if (!mapById.has(existingId) && nameKey && mapByName.has(nameKey)) {
+      existingId = mapByName.get(nameKey)!;
+    }
+
+    const existing = mapById.get(existingId);
+    if (!existing) {
+      mapById.set(item.id, item);
+      if (nameKey) mapByName.set(nameKey, item.id);
+    } else {
+      const existingTime = new Date(existing.updatedAt || 0).getTime();
+      const itemTime = new Date(item.updatedAt || 0).getTime();
+      if (isNaN(existingTime) || itemTime >= existingTime) {
+        if (existing.id !== item.id) {
+          mapById.delete(existing.id);
+        }
+        mapById.set(item.id, item);
+        if (nameKey) mapByName.set(nameKey, item.id);
+      }
+    }
+  };
+
+  dbItems.forEach(processItem);
+  localItems.forEach(processItem);
+
+  return Array.from(mapById.values());
+}
+
 // ─── Classe de serviço ────────────────────────────────────────────────────
 
 export class SupabaseService {
@@ -163,129 +205,191 @@ export class SupabaseService {
     this.sb = client;
   }
 
+  // ── Custos Indiretos ───────────────────────────────────────────────────
+  async getIndirectCosts(userId: string): Promise<IndirectCostsConfig> {
+    const localCost = StorageService.getIndirectCosts(userId);
+    try {
+      const { data } = await this.sb
+        .from('custos_indiretos')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (data) {
+        const dbCost: IndirectCostsConfig = {
+          userId: data.user_id,
+          proLabore: Number(data.pro_labore),
+          utilities: Number(data.utilities),
+          cleaningAndSupport: Number(data.cleaning_and_support),
+          otherExpenses: Number(data.other_expenses || 0),
+          workHoursCapacity: Number(data.work_hours_capacity),
+          updatedAt: data.updated_at,
+        };
+        const localTime = new Date(localCost.updatedAt || 0).getTime();
+        const dbTime = new Date(dbCost.updatedAt || 0).getTime();
+        if (isNaN(dbTime) || localTime >= dbTime) {
+          return localCost;
+        }
+        return dbCost;
+      }
+    } catch (e) {
+      // Fallback
+    }
+    return localCost;
+  }
+
+  async saveIndirectCosts(userId: string, config: Partial<IndirectCostsConfig>): Promise<IndirectCostsConfig> {
+    const saved = StorageService.saveIndirectCosts(userId, config);
+    try {
+      await this.sb.from('custos_indiretos').upsert({
+        user_id: userId,
+        pro_labore: saved.proLabore,
+        utilities: saved.utilities,
+        cleaning_and_support: saved.cleaningAndSupport,
+        other_expenses: saved.otherExpenses || 0,
+        work_hours_capacity: saved.workHoursCapacity,
+        updated_at: saved.updatedAt,
+      }, { onConflict: 'user_id' });
+    } catch (e) {
+      // Fallback
+    }
+    return saved;
+  }
+
   // ── Insumos ──────────────────────────────────────────────────────────────
 
   async getAllInsumos(userId: string): Promise<Insumo[]> {
-    const { data, error } = await this.sb
-      .from('insumos')
-      .select('*')
-      .eq('user_id', userId)
-      .order('description');
-    if (error) throw error;
-    return (data ?? []).map(fromDbInsumo);
+    const localInsumos = StorageService.getAllInsumos(userId);
+    try {
+      const { data, error } = await this.sb
+        .from('insumos')
+        .select('*')
+        .eq('user_id', userId)
+        .order('description');
+      if (!error && data) {
+        const dbInsumos = (data ?? []).map(fromDbInsumo);
+        return mergeWithLocal(dbInsumos, localInsumos).sort((a, b) => a.description.localeCompare(b.description));
+      }
+    } catch (e) {
+      // Fallback
+    }
+    return localInsumos;
   }
 
   async saveInsumo(userId: string, insumo: Omit<Insumo, 'userId' | 'updatedAt'> & { id?: string }): Promise<Insumo> {
-    const now = new Date().toISOString();
-    const full: Insumo = {
-      id: insumo.id || generateId(),
-      userId,
-      description: insumo.description,
-      unit: insumo.unit,
-      costValue: insumo.costValue,
-      currentStock: insumo.currentStock,
-      minStock: insumo.minStock,
-      packageQty: insumo.packageQty,
-      packageCost: insumo.packageCost,
-      updatedAt: now,
-    };
-    const { data, error } = await this.sb
-      .from('insumos')
-      .upsert(toDbInsumo(full), { onConflict: 'id' })
-      .select()
-      .single();
-    if (error) throw error;
-    return fromDbInsumo(data);
+    const savedLocal = StorageService.saveInsumo(userId, insumo);
+    try {
+      const { data, error } = await this.sb
+        .from('insumos')
+        .upsert(toDbInsumo(savedLocal), { onConflict: 'id' })
+        .select()
+        .single();
+      if (!error && data) {
+        return fromDbInsumo(data);
+      }
+    } catch (err) {
+      console.warn('Supabase saveInsumo warning (salvo localmente):', err);
+    }
+    return savedLocal;
   }
 
   async deleteInsumo(userId: string, id: string): Promise<void> {
-    const { error } = await this.sb
-      .from('insumos')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-    if (error) throw error;
+    StorageService.deleteInsumo(userId, id);
+    try {
+      await this.sb
+        .from('insumos')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId);
+    } catch (err) {
+      console.warn('Supabase deleteInsumo warning:', err);
+    }
   }
 
   // ── Receitas ─────────────────────────────────────────────────────────────
 
   async getAllRecipes(userId: string): Promise<Recipe[]> {
-    const { data, error } = await this.sb
-      .from('receitas')
-      .select('*')
-      .eq('user_id', userId)
-      .order('name');
-    if (error) throw error;
-    return (data ?? []).map(fromDbReceita);
+    const localRecipes = StorageService.getAllRecipes(userId);
+    try {
+      const { data, error } = await this.sb
+        .from('receitas')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name');
+      if (!error && data) {
+        const dbRecipes = (data ?? []).map(fromDbReceita);
+        return mergeWithLocal(dbRecipes, localRecipes).sort((a, b) => a.name.localeCompare(b.name));
+      }
+    } catch (e) {
+      console.warn('Supabase getAllRecipes fallback local:', e);
+    }
+    return localRecipes;
   }
 
   async saveRecipe(userId: string, recipe: Omit<Recipe, 'userId' | 'updatedAt'> & { id?: string }): Promise<Recipe> {
-    const now = new Date().toISOString();
-    const full: Recipe = {
-      id: recipe.id || generateId(),
-      userId,
-      name: recipe.name,
-      yieldAmount: recipe.yieldAmount,
-      yieldUnit: recipe.yieldUnit,
-      ingredients: recipe.ingredients,
-      notes: recipe.notes,
-      updatedAt: now,
-    };
-    const { data, error } = await this.sb
-      .from('receitas')
-      .upsert(toDbReceita(full), { onConflict: 'id' })
-      .select()
-      .single();
-    if (error) throw error;
-    return fromDbReceita(data);
+    const savedLocal = StorageService.saveRecipe(userId, recipe);
+    try {
+      const { data, error } = await this.sb
+        .from('receitas')
+        .upsert(toDbReceita(savedLocal), { onConflict: 'id' })
+        .select()
+        .single();
+      if (!error && data) {
+        return fromDbReceita(data);
+      }
+    } catch (err) {
+      console.warn('Supabase saveRecipe warning (salvo localmente):', err);
+    }
+    return savedLocal;
   }
 
   async deleteRecipe(userId: string, id: string): Promise<void> {
-    const { error } = await this.sb
-      .from('receitas')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-    if (error) throw error;
+    StorageService.deleteRecipe(userId, id);
+    try {
+      await this.sb
+        .from('receitas')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId);
+    } catch (err) {
+      console.warn('Supabase deleteRecipe warning:', err);
+    }
   }
 
   // ── Lotes de Produção ────────────────────────────────────────────────────
 
   async getAllLots(userId: string): Promise<ProductionLot[]> {
-    const { data, error } = await this.sb
-      .from('lotes')
-      .select('*')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
-    if (error) throw error;
-    return (data ?? []).map(fromDbLote);
+    const localLots = StorageService.getAllLots(userId);
+    try {
+      const { data, error } = await this.sb
+        .from('lotes')
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false });
+      if (!error && data) {
+        const dbLots = (data ?? []).map(fromDbLote);
+        return mergeWithLocal(dbLots, localLots).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      }
+    } catch (e) {
+      console.warn('Supabase getAllLots fallback local:', e);
+    }
+    return localLots;
   }
 
   async saveLot(userId: string, lot: Omit<ProductionLot, 'userId' | 'updatedAt'> & { id?: string }): Promise<ProductionLot> {
-    const now = new Date().toISOString();
-    const full: ProductionLot = {
-      id: lot.id || generateId(),
-      userId,
-      recipeId: lot.recipeId,
-      name: lot.name,
-      yieldActual: lot.yieldActual,
-      costIngredients: lot.costIngredients,
-      costExtra: lot.costExtra,
-      costTotal: lot.costTotal,
-      costUnit: lot.costUnit,
-      suggestedPrice: lot.suggestedPrice,
-      finalPrice: lot.finalPrice,
-      status: lot.status,
-      date: lot.date || now.split('T')[0],
-      updatedAt: now,
-    };
-    const { data, error } = await this.sb
-      .from('lotes')
-      .upsert(toDbLote(full), { onConflict: 'id' })
-      .select()
-      .single();
-    if (error) throw error;
-    return fromDbLote(data);
+    const savedLocal = StorageService.saveLot(userId, lot);
+    try {
+      const { data, error } = await this.sb
+        .from('lotes')
+        .upsert(toDbLote(savedLocal), { onConflict: 'id' })
+        .select()
+        .single();
+      if (!error && data) {
+        return fromDbLote(data);
+      }
+    } catch (err) {
+      console.warn('Supabase saveLot warning (salvo localmente):', err);
+    }
+    return savedLocal;
   }
 
   async deleteLot(userId: string, id: string): Promise<void> {
@@ -300,35 +404,38 @@ export class SupabaseService {
   // ── Estoque de Produtos Acabados ─────────────────────────────────────────
 
   async getAllStock(userId: string): Promise<StockProduct[]> {
-    const { data, error } = await this.sb
-      .from('estoque_produtos')
-      .select('*')
-      .eq('user_id', userId)
-      .order('name');
-    if (error) throw error;
-    return (data ?? []).map(fromDbEstoque);
+    const localStock = StorageService.getAllStock(userId);
+    try {
+      const { data, error } = await this.sb
+        .from('estoque_produtos')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name');
+      if (!error && data) {
+        const dbStock = (data ?? []).map(fromDbEstoque);
+        return mergeWithLocal(dbStock, localStock).sort((a, b) => a.name.localeCompare(b.name));
+      }
+    } catch (e) {
+      // Fallback
+    }
+    return localStock;
   }
 
   async saveStockProduct(userId: string, prod: Omit<StockProduct, 'userId' | 'updatedAt'> & { id?: string }): Promise<StockProduct> {
-    const now = new Date().toISOString();
-    const full: StockProduct = {
-      id: prod.id || generateId(),
-      userId,
-      name: prod.name,
-      lotId: prod.lotId,
-      costUnit: prod.costUnit,
-      priceSale: prod.priceSale,
-      quantity: prod.quantity,
-      image: prod.image,
-      updatedAt: now,
-    };
-    const { data, error } = await this.sb
-      .from('estoque_produtos')
-      .upsert(toDbEstoque(full), { onConflict: 'id' })
-      .select()
-      .single();
-    if (error) throw error;
-    return fromDbEstoque(data);
+    const savedLocal = StorageService.saveStockProduct(userId, prod);
+    try {
+      const { data, error } = await this.sb
+        .from('estoque_produtos')
+        .upsert(toDbEstoque(savedLocal), { onConflict: 'id' })
+        .select()
+        .single();
+      if (!error && data) {
+        return fromDbEstoque(data);
+      }
+    } catch (err) {
+      console.warn('Supabase saveStockProduct warning (salvo localmente):', err);
+    }
+    return savedLocal;
   }
 
   async deleteStockProduct(userId: string, id: string): Promise<void> {

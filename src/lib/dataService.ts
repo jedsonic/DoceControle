@@ -7,7 +7,7 @@
  *
  * Todos os métodos são assíncronos para suportar os dois modos.
  */
-import { Insumo, Recipe, ProductionLot, StockProduct, Sale } from '../types';
+import { Insumo, Recipe, ProductionLot, StockProduct, Sale, IndirectCostsConfig } from '../types';
 import { StorageService } from './storage';
 import { getSupabase } from './supabase';
 import { SupabaseService } from './supabaseService';
@@ -19,6 +19,23 @@ function getService(): SupabaseService | null {
 }
 
 export const DataService = {
+
+  // ── Custos Indiretos ─────────────────────────────────────────────────────
+
+  async getIndirectCosts(userId: string): Promise<IndirectCostsConfig> {
+    const svc = getService();
+    if (svc) return svc.getIndirectCosts(userId);
+    return StorageService.getIndirectCosts(userId);
+  },
+
+  async saveIndirectCosts(
+    userId: string,
+    config: Partial<IndirectCostsConfig>
+  ): Promise<IndirectCostsConfig> {
+    const svc = getService();
+    if (svc) return svc.saveIndirectCosts(userId, config);
+    return StorageService.saveIndirectCosts(userId, config);
+  },
 
   // ── Insumos ──────────────────────────────────────────────────────────────
 

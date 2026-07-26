@@ -45,7 +45,18 @@ export interface Recipe {
   yieldAmount: number; // Yield quantity (e.g., 10, 1)
   yieldUnit: string; // e.g., 'unidades', 'fatias', 'kg', 'porções'
   ingredients: RecipeIngredient[];
+  productionHours?: number; // Estimated production time in hours
   notes?: string;
+  updatedAt: string;
+}
+
+export interface IndirectCostsConfig {
+  userId: string;
+  proLabore: number; // Pró-labore desejado (R$)
+  utilities: number; // Gás, Energia e Água (R$)
+  cleaningAndSupport: number; // Produtos de limpeza e Apoio (R$)
+  otherExpenses?: number; // Outras despesas fixas (R$)
+  workHoursCapacity: number; // Capacidade de Trabalho Comercial em horas (ex: 160h)
   updatedAt: string;
 }
 
@@ -61,8 +72,9 @@ export interface ProductionLot {
   name: string;
   yieldActual: number; // Real yield obtained
   costIngredients: number; // Subtotal cost of recipe raw materials
+  costIndirect?: number; // Subtotal cost of indirect costs/hourly rate
   costExtra: ExtraCost[]; // e.g., packaging, electricity, labor, etc.
-  costTotal: number; // costIngredients + sum(costExtra)
+  costTotal: number; // costIngredients + costIndirect + sum(costExtra)
   costUnit: number; // costTotal / yieldActual
   suggestedPrice: number; // Price calculated using the 40/40/20 rule
   finalPrice: number; // Custom final price chosen by user
