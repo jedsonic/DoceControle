@@ -32,20 +32,22 @@ export function generateId(): string {
   return Math.random().toString(36).substring(2, 9);
 }
 
+const SEED_TIMESTAMP = '2020-01-01T00:00:00.000Z';
+
 // Default Insumos to seed for new accounts
 const DEFAULT_INSUMOS = (userId: string): Insumo[] => [
-  { id: 'i1', userId, description: 'Leite Condensado (Moça)', unit: 'g', costValue: 0.016, currentStock: 5000, minStock: 1000, updatedAt: new Date().toISOString() }, // 395g x R$ 6.30
-  { id: 'i2', userId, description: 'Creme de Leite', unit: 'g', costValue: 0.015, currentStock: 3000, minStock: 600, updatedAt: new Date().toISOString() }, // 200g x R$ 3.00
-  { id: 'i3', userId, description: 'Açúcar Refinado', unit: 'g', costValue: 0.005, currentStock: 10000, minStock: 2000, updatedAt: new Date().toISOString() }, // 1kg x R$ 5.00
-  { id: 'i4', userId, description: 'Farinha de Trigo', unit: 'g', costValue: 0.006, currentStock: 8000, minStock: 1500, updatedAt: new Date().toISOString() }, // 1kg x R$ 6.00
-  { id: 'i5', userId, description: 'Chocolate em Pó 50%', unit: 'g', costValue: 0.032, currentStock: 2000, minStock: 500, updatedAt: new Date().toISOString() }, // 400g x R$ 12.80
-  { id: 'i6', userId, description: 'Manteiga sem Sal', unit: 'g', costValue: 0.055, currentStock: 1500, minStock: 400, updatedAt: new Date().toISOString() }, // 500g x R$ 27.50
-  { id: 'i7', userId, description: 'Ovos Brancos', unit: 'un', costValue: 0.60, currentStock: 60, minStock: 12, updatedAt: new Date().toISOString() }, // Bandeja 30 un x R$ 18.00
-  { id: 'i8', userId, description: 'Granulado Belga', unit: 'g', costValue: 0.085, currentStock: 1000, minStock: 200, updatedAt: new Date().toISOString() }, // 500g x R$ 42.50
-  { id: 'i9', userId, description: 'Embalagem de Bolo G', unit: 'un', costValue: 3.50, currentStock: 25, minStock: 5, updatedAt: new Date().toISOString() },
-  { id: 'i10', userId, description: 'Nutella Pote 350g', unit: 'g', costValue: 0.068, currentStock: 1050, minStock: 350, updatedAt: new Date().toISOString() }, // 350g x R$ 23.80
-  { id: 'i11', userId, description: 'Leite Ninho em Pó', unit: 'g', costValue: 0.045, currentStock: 2000, minStock: 400, updatedAt: new Date().toISOString() }, // 400g x R$ 18.00
-  { id: 'i12', userId, description: 'Saquinho para Din-Din (Geladinho)', unit: 'un', costValue: 0.08, currentStock: 200, minStock: 50, updatedAt: new Date().toISOString() },
+  { id: 'i1', userId, description: 'Leite Condensado (Moça)', unit: 'g', costValue: 0.016, currentStock: 5000, minStock: 1000, updatedAt: SEED_TIMESTAMP }, // 395g x R$ 6.30
+  { id: 'i2', userId, description: 'Creme de Leite', unit: 'g', costValue: 0.015, currentStock: 3000, minStock: 600, updatedAt: SEED_TIMESTAMP }, // 200g x R$ 3.00
+  { id: 'i3', userId, description: 'Açúcar Refinado', unit: 'g', costValue: 0.005, currentStock: 10000, minStock: 2000, updatedAt: SEED_TIMESTAMP }, // 1kg x R$ 5.00
+  { id: 'i4', userId, description: 'Farinha de Trigo', unit: 'g', costValue: 0.006, currentStock: 8000, minStock: 1500, updatedAt: SEED_TIMESTAMP }, // 1kg x R$ 6.00
+  { id: 'i5', userId, description: 'Chocolate em Pó 50%', unit: 'g', costValue: 0.032, currentStock: 2000, minStock: 500, updatedAt: SEED_TIMESTAMP }, // 400g x R$ 12.80
+  { id: 'i6', userId, description: 'Manteiga sem Sal', unit: 'g', costValue: 0.055, currentStock: 1500, minStock: 400, updatedAt: SEED_TIMESTAMP }, // 500g x R$ 27.50
+  { id: 'i7', userId, description: 'Ovos Brancos', unit: 'un', costValue: 0.60, currentStock: 60, minStock: 12, updatedAt: SEED_TIMESTAMP }, // Bandeja 30 un x R$ 18.00
+  { id: 'i8', userId, description: 'Granulado Belga', unit: 'g', costValue: 0.085, currentStock: 1000, minStock: 200, updatedAt: SEED_TIMESTAMP }, // 500g x R$ 42.50
+  { id: 'i9', userId, description: 'Embalagem de Bolo G', unit: 'un', costValue: 3.50, currentStock: 25, minStock: 5, updatedAt: SEED_TIMESTAMP },
+  { id: 'i10', userId, description: 'Nutella Pote 350g', unit: 'g', costValue: 0.068, currentStock: 1050, minStock: 350, updatedAt: SEED_TIMESTAMP }, // 350g x R$ 23.80
+  { id: 'i11', userId, description: 'Leite Ninho em Pó', unit: 'g', costValue: 0.045, currentStock: 2000, minStock: 400, updatedAt: SEED_TIMESTAMP }, // 400g x R$ 18.00
+  { id: 'i12', userId, description: 'Saquinho para Din-Din (Geladinho)', unit: 'un', costValue: 0.08, currentStock: 200, minStock: 50, updatedAt: SEED_TIMESTAMP },
 ];
 
 // Default Recipes to seed for new accounts
@@ -68,7 +70,7 @@ const DEFAULT_RECIPES = (userId: string): Recipe[] => [
       { insumoId: 'i8', quantity: 120 }, // Granulado belga
     ],
     notes: 'Bolo clássico para festas. Fazer cobertura em ponto de brigadeiro mole e decorar com granulado belga por cima.',
-    updatedAt: new Date().toISOString()
+    updatedAt: SEED_TIMESTAMP
   },
   {
     id: 'r2',
@@ -85,14 +87,14 @@ const DEFAULT_RECIPES = (userId: string): Recipe[] => [
       { insumoId: 'i12', quantity: 12 },  // Saquinhos
     ],
     notes: 'Bater a base cremosa no liquidificador (leite condensado, creme de leite e leite ninho). Adicionar colheradas de Nutella diretamente dentro de cada saquinho antes de encher com a base líquida.',
-    updatedAt: new Date().toISOString()
+    updatedAt: SEED_TIMESTAMP
   }
 ];
 
 // Default Stock to seed for new accounts
 const DEFAULT_STOCK = (userId: string): StockProduct[] => [
-  { id: 's1', userId, name: 'Bolo de Chocolate Brigadeiro Tradicional', costUnit: 35.80, priceSale: 90.00, quantity: 3, updatedAt: new Date().toISOString() },
-  { id: 's2', userId, name: 'Din-Din Gourmet de Ninho com Nutella', costUnit: 2.15, priceSale: 7.00, quantity: 24, updatedAt: new Date().toISOString() }
+  { id: 's1', userId, name: 'Bolo de Chocolate Brigadeiro Tradicional', costUnit: 35.80, priceSale: 90.00, quantity: 3, updatedAt: SEED_TIMESTAMP },
+  { id: 's2', userId, name: 'Din-Din Gourmet de Ninho com Nutella', costUnit: 2.15, priceSale: 7.00, quantity: 24, updatedAt: SEED_TIMESTAMP }
 ];
 
 // Default Sales to seed (simulated past 7 days)
@@ -306,7 +308,7 @@ export const StorageService = {
       cleaningAndSupport: 150,
       otherExpenses: 0,
       workHoursCapacity: 160,
-      updatedAt: new Date().toISOString()
+      updatedAt: SEED_TIMESTAMP
     };
   },
 

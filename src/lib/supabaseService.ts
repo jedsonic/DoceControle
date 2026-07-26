@@ -162,6 +162,9 @@ function mergeWithLocal<T extends { id: string; name?: string; description?: str
   dbItems: T[],
   localItems: T[]
 ): T[] {
+  const isSeedId = (id: string) => /^i\d+$/.test(id) || /^r\d+$/.test(id) || /^s\d+$/.test(id);
+  const filteredLocal = dbItems.length > 0 ? localItems.filter(item => !isSeedId(item.id)) : localItems;
+
   const mapById = new Map<string, T>();
   const mapByName = new Map<string, string>();
 
@@ -180,7 +183,9 @@ function mergeWithLocal<T extends { id: string; name?: string; description?: str
     } else {
       const existingTime = new Date(existing.updatedAt || 0).getTime();
       const itemTime = new Date(item.updatedAt || 0).getTime();
-      if (isNaN(existingTime) || itemTime >= existingTime) {
+      const isItemSeed = item.updatedAt?.startsWith('2020-01-01');
+      
+      if (!isItemSeed && !isNaN(itemTime) && itemTime > existingTime) {
         if (existing.id !== item.id) {
           mapById.delete(existing.id);
         }
@@ -191,7 +196,7 @@ function mergeWithLocal<T extends { id: string; name?: string; description?: str
   };
 
   dbItems.forEach(processItem);
-  localItems.forEach(processItem);
+  filteredLocal.forEach(processItem);
 
   return Array.from(mapById.values());
 }
@@ -226,10 +231,13 @@ export class SupabaseService {
         };
         const localTime = new Date(localCost.updatedAt || 0).getTime();
         const dbTime = new Date(dbCost.updatedAt || 0).getTime();
-        if (isNaN(dbTime) || localTime >= dbTime) {
-          return localCost;
+        
+        // Se a configuracao local for padrao (2020-01-01) ou se o banco for mais recente/valido, atualiza o cache local com os dados do banco
+        if (localCost.updatedAt?.startsWith('2020-01-01') || isNaN(localTime) || dbTime >= localTime) {
+          StorageService.saveIndirectCosts(userId, dbCost);
+          return dbCost;
         }
-        return dbCost;
+        return localCost;
       }
     } catch (e) {
       // Fallback
