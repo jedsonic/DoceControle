@@ -1,7 +1,6 @@
-import type { Request, Response } from 'express';
 import { GoogleGenAI } from '@google/genai';
 
-export default async function handler(req: Request, res: Response) {
+export default async function handler(req: any, res: any) {
   // Garantir que a requisição é do tipo POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
