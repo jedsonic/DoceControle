@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StockProduct, SaleItem } from '../types';
-import { StorageService } from '../lib/storage';
+import { DataService } from '../lib/dataService';
 import { Search, ShoppingCart, Plus, Minus, CreditCard, DollarSign, Sparkles, Check, Trash2, ArrowLeft, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -28,10 +28,9 @@ export default function PdvScreen({ userId, onBack, onSaleSuccess }: PdvScreenPr
     setCustomTotal('');
   }, [cart]);
 
-  const loadProducts = () => {
-    // Only fetch products that have quantity > 0 OR show all? Let's show all but mark out-of-stock, 
-    // and prevent adding out-of-stock items, which is standard.
-    setProducts(StorageService.getAllStock(userId));
+  const loadProducts = async () => {
+    const data = await DataService.getAllStock(userId);
+    setProducts(data);
   };
 
   const handleAddToCart = (prod: StockProduct) => {
@@ -83,7 +82,7 @@ export default function PdvScreen({ userId, onBack, onSaleSuccess }: PdvScreenPr
     setCart([]);
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cart.length === 0) {
       alert('Adicione pelo menos um produto ao carrinho para fechar a venda.');
       return;
@@ -115,8 +114,8 @@ export default function PdvScreen({ userId, onBack, onSaleSuccess }: PdvScreenPr
       paymentMethod
     };
 
-    // Process sale (deducts stock and records sale)
-    StorageService.registerSale(userId, salePayload);
+    // Registra venda (desconta estoque e grava venda)
+    await DataService.registerSale(userId, salePayload);
     
     setLastSaleTotal(finalAmount);
     setCheckoutSuccess(true);

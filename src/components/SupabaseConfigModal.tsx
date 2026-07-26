@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { SupabaseConfig } from '../types';
 import { StorageService } from '../lib/storage';
-import { Server, Database, Check, Copy, AlertCircle, FileText, Info, X } from 'lucide-react';
+import { Server, Database, Check, Copy, AlertCircle, FileText, Info, X, RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { createClient } from '@supabase/supabase-js';
 import { resetSupabaseInstance } from '../lib/supabase';
+import { DataService } from '../lib/dataService';
 
 interface SupabaseConfigModalProps {
   onClose: () => void;
@@ -16,6 +17,7 @@ export default function SupabaseConfigModal({ onClose }: SupabaseConfigModalProp
   const [enabled, setEnabled] = useState(false);
   const [copied, setCopied] = useState(false);
   const [testResult, setTestResult] = useState<{ status: 'success' | 'error' | null, msg: string }>({ status: null, msg: '' });
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     const config = StorageService.getSupabaseConfig();
@@ -24,7 +26,7 @@ export default function SupabaseConfigModal({ onClose }: SupabaseConfigModalProp
     setEnabled(config.enabled);
   }, []);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     StorageService.saveSupabaseConfig({
       url: url.trim(),
@@ -32,8 +34,27 @@ export default function SupabaseConfigModal({ onClose }: SupabaseConfigModalProp
       enabled
     });
     resetSupabaseInstance();
-    alert('Configurações salvas com sucesso! Os dados locais continuam seguros e prontos para sincronização.');
-    onClose();
+
+    // Se estiver habilitando com credenciais válidas, sincroniza dados locais para o Supabase
+    if (enabled && url.trim() && anonKey.trim()) {
+      setIsSyncing(true);
+      setTestResult({ status: null, msg: 'Sincronizando dados locais para o Supabase...' });
+      try {
+        const activeUser = StorageService.getActiveUser();
+        if (activeUser) {
+          await DataService.syncLocalToSupabase(activeUser.id);
+        }
+        setTestResult({ status: 'success', msg: 'Conexão salva e dados sincronizados com sucesso!' });
+      } catch (err: any) {
+        setTestResult({ status: 'error', msg: 'Credenciais salvas, mas falha na sincronização inicial: ' + err.message });
+      } finally {
+        setIsSyncing(false);
+      }
+      setTimeout(() => onClose(), 1500);
+    } else {
+      alert('Configurações salvas com sucesso! Os dados locais continuam seguros e prontos para sincronização.');
+      onClose();
+    }
   };
 
   const handleCopySQL = () => {
@@ -155,15 +176,24 @@ export default function SupabaseConfigModal({ onClose }: SupabaseConfigModalProp
             <button
               type="button"
               onClick={handleTestConnection}
-              className="flex-1 py-3 bg-white/40 hover:bg-white text-brand-chocolate border border-white/50 rounded-xl font-bold text-xs cursor-pointer"
+              disabled={isSyncing}
+              className="flex-1 py-3 bg-white/40 hover:bg-white text-brand-chocolate border border-white/50 rounded-xl font-bold text-xs cursor-pointer disabled:opacity-50"
             >
               Testar Conexão
             </button>
             <button
               type="submit"
-              className="flex-1 py-3 bg-brand-chocolate hover:bg-brand-chocolate/90 text-white rounded-xl font-bold text-xs shadow-md cursor-pointer"
+              disabled={isSyncing}
+              className="flex-1 py-3 bg-brand-chocolate hover:bg-brand-chocolate/90 text-white rounded-xl font-bold text-xs shadow-md cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
-              Salvar Credenciais
+              {isSyncing ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Sincronizando...
+                </>
+              ) : (
+                'Salvar Credenciais'
+              )}
             </button>
           </div>
         </form>

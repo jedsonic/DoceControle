@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Insumo } from '../types';
-import { StorageService } from '../lib/storage';
+import { DataService } from '../lib/dataService';
 import { Search, Plus, Edit2, Trash2, ArrowLeft, Save, ShoppingBag, AlertTriangle, X } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -27,8 +27,9 @@ export default function InsumosScreen({ userId, onBack }: InsumosScreenProps) {
     loadInsumos();
   }, [userId]);
 
-  const loadInsumos = () => {
-    setInsumos(StorageService.getAllInsumos(userId));
+  const loadInsumos = async () => {
+    const data = await DataService.getAllInsumos(userId);
+    setInsumos(data);
   };
 
   const openAddModal = () => {
@@ -57,7 +58,7 @@ export default function InsumosScreen({ userId, onBack }: InsumosScreenProps) {
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!description.trim() || !unit.trim() || !packageCost || !packageQty || !currentStock || !minStock) {
@@ -86,25 +87,25 @@ export default function InsumosScreen({ userId, onBack }: InsumosScreenProps) {
       minStock: parseFloat(minStock)
     };
 
-    StorageService.saveInsumo(userId, payload);
+    await DataService.saveInsumo(userId, payload);
     setIsModalOpen(false);
     loadInsumos();
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     const confirmed = window.confirm(`Tem certeza que deseja excluir o insumo "${name}"?\nEsta ação não poderá ser desfeita.`);
     if (confirmed) {
-      StorageService.deleteInsumo(userId, id);
+      await DataService.deleteInsumo(userId, id);
       loadInsumos();
     }
   };
 
-  const handleAdjustStock = (id: string, amount: number) => {
-    const all = StorageService.getAllInsumos(userId);
+  const handleAdjustStock = async (id: string, amount: number) => {
+    const all = await DataService.getAllInsumos(userId);
     const item = all.find(x => x.id === id);
     if (item) {
       const updatedStock = Math.max(0, item.currentStock + amount);
-      StorageService.saveInsumo(userId, {
+      await DataService.saveInsumo(userId, {
         ...item,
         currentStock: updatedStock
       });

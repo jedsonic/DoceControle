@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ProductionLot, Recipe, Insumo, ExtraCost } from '../types';
-import { StorageService } from '../lib/storage';
+import { DataService } from '../lib/dataService';
 import { Search, Plus, Save, Sparkles, AlertCircle, PlayCircle, CheckCircle, Package, ArrowRight, ArrowLeft, PlusCircle, Trash, X } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -47,10 +47,15 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
     loadData();
   }, [userId]);
 
-  const loadData = () => {
-    setLots(StorageService.getAllLots(userId));
-    setRecipes(StorageService.getAllRecipes(userId));
-    setInsumos(StorageService.getAllInsumos(userId));
+  const loadData = async () => {
+    const [lotData, recipeData, insumoData] = await Promise.all([
+      DataService.getAllLots(userId),
+      DataService.getAllRecipes(userId),
+      DataService.getAllInsumos(userId),
+    ]);
+    setLots(lotData);
+    setRecipes(recipeData);
+    setInsumos(insumoData);
   };
 
   const handleRecipeChange = (selectedRecipeId: string) => {
@@ -152,7 +157,7 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
   };
 
   // Form submit
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!recipeId || !name.trim() || !yieldActual) {
@@ -181,15 +186,15 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
       date: editingLot?.date || new Date().toISOString().split('T')[0]
     };
 
-    StorageService.saveLot(userId, payload);
+    await DataService.saveLot(userId, payload);
     setIsEditMode(false);
     loadData();
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     const confirmed = window.confirm(`Deseja realmente excluir o lote de produção "${name}"?\nEsta ação é irreversível.`);
     if (confirmed) {
-      StorageService.deleteLot(userId, id);
+      await DataService.deleteLot(userId, id);
       loadData();
     }
   };
@@ -198,11 +203,11 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
     setConfirmingLotId(lotId);
   };
 
-  const handleConfirmSendToStock = (lotId: string) => {
+  const handleConfirmSendToStock = async (lotId: string) => {
     const lot = lots.find(l => l.id === lotId);
     if (!lot) return;
 
-    const res = StorageService.completeProductionLot(userId, lotId);
+    const res = await DataService.completeProductionLot(userId, lotId);
     if (res.success) {
       const recipe = recipes.find(r => r.id === lot.recipeId);
       setSuccessNotification({

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sale } from '../types';
+import { DataService } from '../lib/dataService';
 import { StorageService } from '../lib/storage';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
@@ -19,6 +20,7 @@ interface FinanceiroScreenProps {
 
 export default function FinanceiroScreen({ userId }: FinanceiroScreenProps) {
   const [sales, setSales] = useState<Sale[]>([]);
+  const [allSalesHistory, setAllSalesHistory] = useState<Sale[]>([]);
   const [activeTab, setActiveTab] = useState<'geral' | 'relatorios'>('geral');
   
   // Tab 1: General view filters
@@ -38,8 +40,8 @@ export default function FinanceiroScreen({ userId }: FinanceiroScreenProps) {
     loadSales();
   }, [userId, filterType, startDate, endDate]);
 
-  const loadSales = () => {
-    let allSales = StorageService.getAllSales(userId);
+  const loadSales = async () => {
+    let allSales = await DataService.getAllSales(userId);
 
     // Sort chronologically by default for calculations, but let's filter first
     const now = new Date();
@@ -48,6 +50,9 @@ export default function FinanceiroScreen({ userId }: FinanceiroScreenProps) {
     const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     if (!selectedMonth) setSelectedMonth(currentMonthStr);
     if (!selectedYear) setSelectedYear(String(now.getFullYear()));
+
+    // Guarda histórico completo para os relatórios avançados
+    setAllSalesHistory([...allSales]);
 
     // Apply preset date filters for General Tab
     const todayStr = now.toISOString().split('T')[0];
@@ -78,18 +83,18 @@ export default function FinanceiroScreen({ userId }: FinanceiroScreenProps) {
     setSales(sortedSales);
   };
 
-  const handleDeleteSale = (saleId: string, amount: number) => {
+  const handleDeleteSale = async (saleId: string, amount: number) => {
     const confirmed = window.confirm(
       `Deseja realmente estornar/cancelar esta venda de R$ ${amount.toFixed(2)}?\n\n` +
       `Os produtos vendidos serão devolvidos ao estoque de produtos acabados automaticamente e os valores serão estornados dos controles financeiros.`
     );
     if (confirmed) {
-      const res = StorageService.deleteSale(userId, saleId);
-      if (res) {
+      try {
+        await DataService.deleteSale(userId, saleId);
         loadSales();
         alert(`Venda de R$ ${amount.toFixed(2)} cancelada com sucesso! O estoque de produtos foi devolvido e as finanças foram atualizadas.`);
-      } else {
-        alert('Não foi possível cancelar a venda.');
+      } catch (err: any) {
+        alert('Não foi possível cancelar a venda: ' + err.message);
       }
     }
   };
@@ -154,7 +159,7 @@ export default function FinanceiroScreen({ userId }: FinanceiroScreenProps) {
   const barData = getBarChartData();
 
   // --- RECONCILE ADVANCED REPORT DATA ---
-  const allSalesHistory = StorageService.getAllSales(userId);
+  // allSalesHistory é carregado via estado assíncrono pelo loadSales()
 
   // Filter sales for the chosen report period
   const getFilteredPeriodSales = () => {
@@ -455,17 +460,17 @@ export default function FinanceiroScreen({ userId }: FinanceiroScreenProps) {
   };
 
   // Seed simulated historic sales for perfect demonstration
-  const handleSeedSimulationData = () => {
+  const handleSeedSimulationData = async () => {
     const confirmed = window.confirm("Deseja simular dados de vendas para os últimos 12 meses? Isso gerará transações automáticas realistas de confeitos para ilustrar os relatórios avançados e projeções de fluxo de caixa.");
     if (confirmed) {
       const dummySales: Sale[] = [];
       const paymentMethods: ('pix' | 'dinheiro' | 'cartao')[] = ['pix', 'dinheiro', 'cartao'];
       
-      const stockProds = StorageService.getAllStock(userId);
+      const stockProds = await DataService.getAllStock(userId);
       const prodPool = stockProds.length > 0 ? stockProds : [
         { id: 's1', name: 'Bolo de Chocolate Brigadeiro Tradicional', costUnit: 35.80, priceSale: 90.00 },
         { id: 's2', name: 'Din-Din Gourmet de Ninho com Nutella', costUnit: 2.15, priceSale: 7.00 }
-      ];
+      ] as any[];
 
       // Create sales across last 12 months
       for (let m = 11; m >= 0; m--) {
@@ -513,7 +518,9 @@ export default function FinanceiroScreen({ userId }: FinanceiroScreenProps) {
         }
       }
       
+      // Salva localmente (dados de simulação) e sincroniza para Supabase se ativo
       StorageService.saveSalesRaw(userId, dummySales);
+      await DataService.syncLocalToSupabase(userId);
       loadSales();
       alert("Simulação de 12 meses concluída! Seus relatórios e projeções agora estão repletos de dados visuais.");
     }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StockProduct, Insumo } from '../types';
-import { StorageService } from '../lib/storage';
+import { DataService } from '../lib/dataService';
 import { Search, Plus, Trash2, ShieldCheck, AlertTriangle, TrendingUp, DollarSign, Package, Layers, Info, X } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -29,25 +29,29 @@ export default function EstoqueScreen({ userId, onNavigateToLots, onNavigateToIn
     loadData();
   }, [userId]);
 
-  const loadData = () => {
-    setStockProducts(StorageService.getAllStock(userId));
-    setInsumos(StorageService.getAllInsumos(userId));
+  const loadData = async () => {
+    const [stockData, insumoData] = await Promise.all([
+      DataService.getAllStock(userId),
+      DataService.getAllInsumos(userId),
+    ]);
+    setStockProducts(stockData);
+    setInsumos(insumoData);
   };
 
-  const handleDeleteProduct = (id: string, name: string) => {
+  const handleDeleteProduct = async (id: string, name: string) => {
     const confirmed = window.confirm(`Tem certeza que deseja excluir o produto "${name}" do estoque?\nEsta ação é permanente.`);
     if (confirmed) {
-      StorageService.deleteStockProduct(userId, id);
+      await DataService.deleteStockProduct(userId, id);
       loadData();
     }
   };
 
-  const handleAdjustQty = (id: string, delta: number) => {
-    const all = StorageService.getAllStock(userId);
+  const handleAdjustQty = async (id: string, delta: number) => {
+    const all = await DataService.getAllStock(userId);
     const item = all.find(x => x.id === id);
     if (item) {
       const updatedQty = Math.max(0, item.quantity + delta);
-      StorageService.saveStockProduct(userId, {
+      await DataService.saveStockProduct(userId, {
         ...item,
         quantity: updatedQty
       });
@@ -76,7 +80,7 @@ export default function EstoqueScreen({ userId, onNavigateToLots, onNavigateToIn
     setIsEditModalOpen(true);
   };
 
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prodName.trim() || !prodCost || !prodPrice || !prodQty) {
       alert('Preencha todos os campos.');
@@ -84,7 +88,7 @@ export default function EstoqueScreen({ userId, onNavigateToLots, onNavigateToIn
     }
 
     if (editingProd) {
-      StorageService.saveStockProduct(userId, {
+      await DataService.saveStockProduct(userId, {
         id: editingProd.id,
         name: prodName.trim(),
         costUnit: parseFloat(prodCost),

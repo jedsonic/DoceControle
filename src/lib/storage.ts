@@ -590,13 +590,14 @@ export const StorageService = {
 
   // --- SUPABASE SYNC CONFIG ---
   getSupabaseConfig(): SupabaseConfig {
-    const config = getLocal<SupabaseConfig>(SUPABASE_KEY, { url: '', anonKey: '', enabled: false });
-    if (!config.url || !config.anonKey) {
-      const defaultConfig = {
-        url: 'https://icnkntxdqpsoekgrvyry.supabase.co',
-        anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljbmtudHhkcXBzb2VrZ3J2eXJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0NjAyMzgsImV4cCI6MjEwMDAzNjIzOH0.iqQzl0wPOnEuauVza2Wvi_ItyZFXaKu1Xk8oa53uDtE',
-        enabled: true
-      };
+    const defaultConfig: SupabaseConfig = {
+      url: 'https://icnkntxdqpsoekgrvyry.supabase.co',
+      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljbmtudHhkcXBzb2VrZ3J2eXJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0NjAyMzgsImV4cCI6MjEwMDAzNjIzOH0.iqQzl0wPOnEuauVza2Wvi_ItyZFXaKu1Xk8oa53uDtE',
+      enabled: true
+    };
+
+    const config = getLocal<SupabaseConfig>(SUPABASE_KEY, defaultConfig);
+    if (!config.url || !config.anonKey || config.enabled === false) {
       setLocal(SUPABASE_KEY, defaultConfig);
       return defaultConfig;
     }

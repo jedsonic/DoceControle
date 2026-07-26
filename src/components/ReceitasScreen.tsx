@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Recipe, Insumo, RecipeIngredient } from '../types';
-import { StorageService } from '../lib/storage';
+import { DataService } from '../lib/dataService';
 import { Search, Plus, Edit2, Trash2, ArrowLeft, Save, Sparkles, BookOpen, Trash, X } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -31,9 +31,13 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
     loadData();
   }, [userId]);
 
-  const loadData = () => {
-    setRecipes(StorageService.getAllRecipes(userId));
-    setInsumos(StorageService.getAllInsumos(userId));
+  const loadData = async () => {
+    const [recipeData, insumoData] = await Promise.all([
+      DataService.getAllRecipes(userId),
+      DataService.getAllInsumos(userId),
+    ]);
+    setRecipes(recipeData);
+    setInsumos(insumoData);
   };
 
   const startAddRecipe = () => {
@@ -88,7 +92,7 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
     setSelectedIngredients(updated);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!name.trim() || !yieldAmount || !yieldUnit.trim()) {
@@ -110,15 +114,15 @@ export default function ReceitasScreen({ userId, onBack }: ReceitasScreenProps) 
       notes: notes.trim()
     };
 
-    StorageService.saveRecipe(userId, payload);
+    await DataService.saveRecipe(userId, payload);
     setIsEditMode(false);
     loadData();
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     const confirmed = window.confirm(`Deseja realmente excluir a receita "${name}"?\nEsta ação é irreversível.`);
     if (confirmed) {
-      StorageService.deleteRecipe(userId, id);
+      await DataService.deleteRecipe(userId, id);
       loadData();
     }
   };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, ShippingRate } from '../types';
 import { StorageService } from '../lib/storage';
+import { DataService } from '../lib/dataService';
 import { MapPin, Phone, Plus, Trash2, Copy, Check, Link, Navigation, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -42,31 +43,32 @@ export default function FreteConfig({ userId }: FreteConfigProps) {
     if (!user) return;
     
     // Obter produtos em estoque
-    const stock = StorageService.getAllStock(userId).filter(p => p.quantity > 0);
-    
-    const catalogData = {
-      id: userId,
-      businessName: user.businessName,
-      whatsapp: whatsapp,
-      latitude: latitude ? parseFloat(latitude) : undefined,
-      longitude: longitude ? parseFloat(longitude) : undefined,
-      shippingRates: rates,
-      products: stock.map(p => ({
-        id: p.id,
-        name: p.name,
-        priceSale: p.priceSale,
-        quantity: p.quantity,
-        image: p.image
-      }))
-    };
-    
-    try {
-      const base64Data = btoa(unescape(encodeURIComponent(JSON.stringify(catalogData))));
-      setCopiedLink(`${window.location.origin}/#c=${base64Data}`);
-    } catch (e) {
-      // Fallback simplificado
-      setCopiedLink(`${window.location.origin}/#catalogo=${userId}`);
-    }
+    DataService.getAllStock(userId).then(stock => {
+      const inStock = stock.filter(p => p.quantity > 0);
+      const catalogData = {
+        id: userId,
+        businessName: user.businessName,
+        whatsapp: whatsapp,
+        latitude: latitude ? parseFloat(latitude) : undefined,
+        longitude: longitude ? parseFloat(longitude) : undefined,
+        shippingRates: rates,
+        products: inStock.map(p => ({
+          id: p.id,
+          name: p.name,
+          priceSale: p.priceSale,
+          quantity: p.quantity,
+          image: p.image
+        }))
+      };
+      
+      try {
+        const base64Data = btoa(unescape(encodeURIComponent(JSON.stringify(catalogData))));
+        setCopiedLink(`${window.location.origin}/#c=${base64Data}`);
+      } catch (e) {
+        // Fallback simplificado
+        setCopiedLink(`${window.location.origin}/#catalogo=${userId}`);
+      }
+    });
   }, [user, whatsapp, address, latitude, longitude, rates, userId]);
 
   const handleGetCurrentLocation = () => {
