@@ -647,10 +647,14 @@ export class SupabaseService {
       lots: ProductionLot[];
       stock: StockProduct[];
       sales: Sale[];
+      indirectCosts?: IndirectCostsConfig;
     }
   ): Promise<void> {
     const jobs: Promise<any>[] = [];
 
+    if (localData.indirectCosts) {
+      jobs.push(this.saveIndirectCosts(userId, localData.indirectCosts));
+    }
     if (localData.insumos.length > 0) {
       jobs.push(Promise.resolve(this.sb.from('insumos').upsert(localData.insumos.map(toDbInsumo), { onConflict: 'id' })));
     }

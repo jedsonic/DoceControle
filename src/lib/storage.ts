@@ -722,6 +722,17 @@ CREATE TABLE IF NOT EXISTS estoque_produtos (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- Tabela de Custos Indiretos
+CREATE TABLE IF NOT EXISTS custos_indiretos (
+  user_id TEXT PRIMARY KEY,
+  pro_labore NUMERIC NOT NULL DEFAULT 2500,
+  utilities NUMERIC NOT NULL DEFAULT 400,
+  cleaning_and_support NUMERIC NOT NULL DEFAULT 150,
+  other_expenses NUMERIC NOT NULL DEFAULT 0,
+  work_hours_capacity NUMERIC NOT NULL DEFAULT 160,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
 -- Tabela de Vendas
 CREATE TABLE IF NOT EXISTS vendas (
   id TEXT PRIMARY KEY,
@@ -746,6 +757,7 @@ ALTER TABLE receitas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lotes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE estoque_produtos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vendas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE custos_indiretos ENABLE ROW LEVEL SECURITY;
 
 -- Cria políticas simples baseadas no user_id enviado pela app (ou desative RLS temporariamente para teste)
 CREATE POLICY "Acesso total aos insumos do usuário" ON insumos FOR ALL USING (true) WITH CHECK (true);
@@ -753,6 +765,7 @@ CREATE POLICY "Acesso total às receitas" ON receitas FOR ALL USING (true) WITH 
 CREATE POLICY "Acesso total aos lotes" ON lotes FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total ao estoque" ON estoque_produtos FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total às vendas" ON vendas FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso total aos custos indiretos" ON custos_indiretos FOR ALL USING (true) WITH CHECK (true);
 `;
   }
 };

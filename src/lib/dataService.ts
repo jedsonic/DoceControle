@@ -174,10 +174,11 @@ export const DataService = {
       lots: StorageService.getAllLots(userId),
       stock: StorageService.getAllStock(userId),
       sales: StorageService.getAllSales(userId),
+      indirectCosts: StorageService.getIndirectCosts(userId),
     };
 
     // Só sincroniza se houver dados locais
-    const hasLocalData = Object.values(localData).some(arr => arr.length > 0);
+    const hasLocalData = Object.values(localData).some(item => Array.isArray(item) ? item.length > 0 : !!item);
     if (!hasLocalData) return;
 
     await svc.syncLocalDataToSupabase(userId, localData);
