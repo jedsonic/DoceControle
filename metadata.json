@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Doce Controle",
+  "description": "Sistema integrado premium para controle de produção, receitas, estoque, PDV e financeiro com a regra 40/40/20 para confeitarias e docerias.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
