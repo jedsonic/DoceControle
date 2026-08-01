@@ -73,7 +73,7 @@ export default function EstoqueScreen({ userId, onNavigateToLots, onNavigateToIn
   const handleOpenEditModal = (prod: StockProduct) => {
     setEditingProd(prod);
     setProdName(prod.name);
-    setProdCost(prod.costUnit.toString());
+    setProdCost(prod.costUnit.toFixed(3));
     setProdPrice(prod.priceSale.toString());
     setProdQty(prod.quantity.toString());
     setProdImage(prod.image || '');
@@ -91,7 +91,7 @@ export default function EstoqueScreen({ userId, onNavigateToLots, onNavigateToIn
       await DataService.saveStockProduct(userId, {
         id: editingProd.id,
         name: prodName.trim(),
-        costUnit: parseFloat(prodCost),
+        costUnit: parseFloat(parseFloat(prodCost).toFixed(3)),
         priceSale: parseFloat(prodPrice),
         quantity: parseFloat(prodQty),
         image: prodImage,
@@ -401,7 +401,7 @@ export default function EstoqueScreen({ userId, onNavigateToLots, onNavigateToIn
                   <label className="text-xs font-semibold text-brand-chocolate uppercase tracking-wider block">Custo Unitário (R$)</label>
                   <input
                     type="number"
-                    step="0.01"
+                    step="0.001"
                     min="0"
                     value={prodCost}
                     onChange={(e) => setProdCost(e.target.value)}

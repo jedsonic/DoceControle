@@ -523,7 +523,7 @@ export const StorageService = {
         
       allStock[existingStockIndex] = {
         ...existing,
-        costUnit: parseFloat(weightedCost.toFixed(2)),
+        costUnit: parseFloat(weightedCost.toFixed(3)),
         priceSale: lot.finalPrice, // update to latest sale price
         quantity: totalQty,
         updatedAt: new Date().toISOString()
@@ -534,7 +534,7 @@ export const StorageService = {
         userId,
         name: lot.name,
         lotId: lot.id,
-        costUnit: lot.costUnit,
+        costUnit: parseFloat(lot.costUnit.toFixed(3)),
         priceSale: lot.finalPrice,
         quantity: lot.yieldActual,
         updatedAt: new Date().toISOString()
@@ -594,6 +594,14 @@ export const StorageService = {
     const filtered = all.filter(item => !(item.id === id && item.userId === userId));
     setLocal(STOCK_KEY, filtered);
     return filtered.length < initialLength;
+  },
+
+  /** Sobrescreve o estoque local de um usuário com os dados vindos do Supabase. */
+  saveStockRaw(userId: string, items: StockProduct[]): void {
+    const all = getLocal<StockProduct[]>(STOCK_KEY, []);
+    // Remove registros antigos do usuário e substitui pelos itens novos
+    const othersUsers = all.filter(item => item.userId !== userId);
+    setLocal(STOCK_KEY, [...othersUsers, ...items]);
   },
 
   // --- SALES CRUD (PDV) ---
@@ -684,6 +692,8 @@ CREATE TABLE IF NOT EXISTS insumos (
   cost_value NUMERIC NOT NULL,
   current_stock NUMERIC NOT NULL DEFAULT 0,
   min_stock NUMERIC NOT NULL DEFAULT 0,
+  package_qty NUMERIC,
+  package_cost NUMERIC,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -695,6 +705,7 @@ CREATE TABLE IF NOT EXISTS receitas (
   yield_amount NUMERIC NOT NULL,
   yield_unit TEXT NOT NULL,
   ingredients JSONB NOT NULL, -- Array de { insumoId, quantity }
+  production_hours NUMERIC,
   notes TEXT,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -707,6 +718,7 @@ CREATE TABLE IF NOT EXISTS lotes (
   name TEXT NOT NULL,
   yield_actual NUMERIC NOT NULL,
   cost_ingredients NUMERIC NOT NULL,
+  cost_indirect NUMERIC,
   cost_extra JSONB NOT NULL, -- Array de { name, value }
   cost_total NUMERIC NOT NULL,
   cost_unit NUMERIC NOT NULL,

@@ -43,6 +43,7 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
     yieldUnit: string;
     finalPrice: number;
   } | null>(null);
+  const [isSendingToStock, setIsSendingToStock] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -226,20 +227,27 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
     const lot = lots.find(l => l.id === lotId);
     if (!lot) return;
 
-    const res = await DataService.completeProductionLot(userId, lotId);
-    if (res.success) {
-      const recipe = recipes.find(r => r.id === lot.recipeId);
-      setSuccessNotification({
-        lotName: lot.name,
-        yieldActual: lot.yieldActual,
-        yieldUnit: recipe?.yieldUnit || 'un',
-        finalPrice: lot.finalPrice
-      });
-      loadData();
-    } else {
-      alert(res.message);
+    setIsSendingToStock(true);
+    try {
+      const res = await DataService.completeProductionLot(userId, lotId);
+      if (res.success) {
+        const recipe = recipes.find(r => r.id === lot.recipeId);
+        setSuccessNotification({
+          lotName: lot.name,
+          yieldActual: lot.yieldActual,
+          yieldUnit: recipe?.yieldUnit || 'un',
+          finalPrice: lot.finalPrice
+        });
+        loadData();
+      } else {
+        alert(res.message);
+      }
+      setConfirmingLotId(null);
+    } catch (err: any) {
+      alert("Erro ao enviar para estoque: " + err.message);
+    } finally {
+      setIsSendingToStock(false);
     }
-    setConfirmingLotId(null);
   };
 
   // Request pricing advice from Gemini AI Advisor
@@ -724,27 +732,61 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
                   </div>
 
                   {/* 40/40/20 Allocation visual bar */}
-                  <div className="space-y-2 mb-6">
-                    <span className="text-[11px] text-white/75 block uppercase font-bold tracking-wider">
-                      Como se distribui a venda de R$ {getSuggestedPrice().toFixed(2)}:
-                    </span>
-                    <div className="h-6 w-full rounded-xl overflow-hidden flex text-[10px] font-bold text-white shadow-inner">
-                      <div className="bg-brand-brown-light flex items-center justify-center" style={{ width: '40%' }} title="Reposição de Insumos">
-                        40% Reposição
+                  {(() => {
+                    const cost = getCostUnit();
+                    const activePrice = finalPrice ? (parseFloat(finalPrice) || 0) : getSuggestedPrice();
+                    
+                    const reposicao = Math.min(activePrice, cost);
+                    const margin = Math.max(0, activePrice - cost);
+                    const lucro = margin * (40 / 60);
+                    const caixa = margin * (20 / 60);
+                    
+                    const pctReposicao = activePrice > 0 ? (reposicao / activePrice) * 100 : 0;
+                    const pctLucro = activePrice > 0 ? (lucro / activePrice) * 100 : 0;
+                    const pctCaixa = activePrice > 0 ? (caixa / activePrice) * 100 : 0;
+                    
+                    return (
+                      <div className="space-y-2 mb-6">
+                        <span className="text-[11px] text-white/75 block uppercase font-bold tracking-wider">
+                          Como se distribui a venda de R$ {activePrice.toFixed(2)}:
+                        </span>
+                        <div className="h-6 w-full rounded-xl overflow-hidden flex text-[10px] font-bold text-white shadow-inner">
+                          {pctReposicao > 0 && (
+                            <div 
+                              className="bg-brand-brown-light flex items-center justify-center transition-all duration-300" 
+                              style={{ width: `${pctReposicao}%` }} 
+                              title="Reposição de Insumos (Custo de Fabricação)"
+                            >
+                              {pctReposicao >= 15 && `${pctReposicao.toFixed(0)}% Reposição`}
+                            </div>
+                          )}
+                          {pctLucro > 0 && (
+                            <div 
+                              className="bg-brand-rose flex items-center justify-center transition-all duration-300" 
+                              style={{ width: `${pctLucro}%` }} 
+                              title="Margem de Lucro Real"
+                            >
+                              {pctLucro >= 15 && `${pctLucro.toFixed(0)}% Lucro`}
+                            </div>
+                          )}
+                          {pctCaixa > 0 && (
+                            <div 
+                              className="bg-brand-gold text-brand-chocolate flex items-center justify-center transition-all duration-300" 
+                              style={{ width: `${pctCaixa}%` }} 
+                              title="Fundo de Emergência / Reserva"
+                            >
+                              {pctCaixa >= 15 && `${pctCaixa.toFixed(0)}% Caixa`}
+                            </div>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-3 gap-1 text-[10px] text-white/75 font-mono">
+                          <div>• Reposição (Custo): R$ {reposicao.toFixed(2)}</div>
+                          <div>• Lucro Líquido: R$ {lucro.toFixed(2)}</div>
+                          <div>• Caixa/Emerg.: R$ {caixa.toFixed(2)}</div>
+                        </div>
                       </div>
-                      <div className="bg-brand-rose flex items-center justify-center" style={{ width: '40%' }} title="Margem de Lucro">
-                        40% Lucro
-                      </div>
-                      <div className="bg-brand-gold text-brand-chocolate flex items-center justify-center" style={{ width: '20%' }} title="Fundo de Emergência">
-                        20% Caixa
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-1 text-[10px] text-white/75 font-mono">
-                      <div>• Reposição: R$ {(getSuggestedPrice() * 0.4).toFixed(2)}</div>
-                      <div>• Lucro: R$ {(getSuggestedPrice() * 0.4).toFixed(2)}</div>
-                      <div>• Caixa/Emerg.: R$ {(getSuggestedPrice() * 0.2).toFixed(2)}</div>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                     {/* AI Advisor Button and Output */}
                   <div className="border-t border-white/10 pt-4">
@@ -853,16 +895,27 @@ export default function LotesScreen({ userId, onBack, onNavigateToStock }: Lotes
               <div className="flex gap-3">
                 <button
                   onClick={() => setConfirmingLotId(null)}
-                  className="flex-1 py-3 bg-brand-cream/60 hover:bg-brand-cream text-brand-chocolate rounded-xl font-bold text-xs border border-brand-brown-light/10 transition touch-target"
+                  disabled={isSendingToStock}
+                  className="flex-1 py-3 bg-brand-cream/60 hover:bg-brand-cream text-brand-chocolate rounded-xl font-bold text-xs border border-brand-brown-light/10 transition touch-target disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={() => handleConfirmSendToStock(lot.id)}
-                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md transition touch-target flex items-center justify-center gap-1.5"
+                  disabled={isSendingToStock}
+                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md transition touch-target flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
-                  <CheckCircle className="w-4 h-4 text-emerald-200" />
-                  Confirmar e Enviar
+                  {isSendingToStock ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                      Enviando, aguarde...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 text-emerald-200" />
+                      Confirmar e Enviar
+                    </>
+                  )}
                 </button>
               </div>
             </motion.div>

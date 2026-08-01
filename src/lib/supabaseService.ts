@@ -243,7 +243,7 @@ export class SupabaseService {
   async saveIndirectCosts(userId: string, config: Partial<IndirectCostsConfig>): Promise<IndirectCostsConfig> {
     const saved = StorageService.saveIndirectCosts(userId, config);
     try {
-      await this.sb.from('custos_indiretos').upsert({
+      const { error } = await this.sb.from('custos_indiretos').upsert({
         user_id: userId,
         pro_labore: saved.proLabore,
         utilities: saved.utilities,
@@ -252,8 +252,14 @@ export class SupabaseService {
         work_hours_capacity: saved.workHoursCapacity,
         updated_at: saved.updatedAt,
       }, { onConflict: 'user_id' });
-    } catch (e) {
-      // Fallback
+      
+      if (error) {
+        console.error('Supabase saveIndirectCosts error:', error);
+        throw new Error(error.message || 'Erro ao salvar custos indiretos no Supabase');
+      }
+    } catch (e: any) {
+      console.error('Erro na gravação remota de custos indiretos:', e);
+      throw e;
     }
     return saved;
   }
@@ -268,14 +274,15 @@ export class SupabaseService {
         .select('*')
         .eq('user_id', userId)
         .order('description');
-      if (!error && data) {
+      if (error) throw error;
+      if (data) {
         const dbInsumos = (data ?? []).map(fromDbInsumo);
         const merged = mergeWithLocal(dbInsumos, localInsumos).sort((a, b) => a.description.localeCompare(b.description));
         StorageService.saveInsumosRaw(userId, merged);
         return merged;
       }
     } catch (e) {
-      // Fallback
+      console.warn('Supabase getAllInsumos warning (usando local):', e);
     }
     return localInsumos;
   }
@@ -288,13 +295,20 @@ export class SupabaseService {
         .upsert(toDbInsumo(savedLocal), { onConflict: 'id' })
         .select()
         .single();
-      if (!error && data) {
+      
+      if (error) {
+        console.error('Supabase saveInsumo error:', error);
+        throw new Error(error.message || 'Erro ao salvar insumo no Supabase');
+      }
+      
+      if (data) {
         const result = fromDbInsumo(data);
         StorageService.saveInsumo(userId, result);
         return result;
       }
-    } catch (err) {
-      console.warn('Supabase saveInsumo warning (salvo localmente):', err);
+    } catch (err: any) {
+      console.error('Falha ao salvar insumo no Supabase:', err);
+      throw err;
     }
     return savedLocal;
   }
@@ -302,13 +316,15 @@ export class SupabaseService {
   async deleteInsumo(userId: string, id: string): Promise<void> {
     StorageService.deleteInsumo(userId, id);
     try {
-      await this.sb
+      const { error } = await this.sb
         .from('insumos')
         .delete()
         .eq('id', id)
         .eq('user_id', userId);
+      if (error) throw error;
     } catch (err) {
-      console.warn('Supabase deleteInsumo warning:', err);
+      console.error('Supabase deleteInsumo error:', err);
+      throw err;
     }
   }
 
@@ -322,14 +338,15 @@ export class SupabaseService {
         .select('*')
         .eq('user_id', userId)
         .order('name');
-      if (!error && data) {
+      if (error) throw error;
+      if (data) {
         const dbRecipes = (data ?? []).map(fromDbReceita);
         const merged = mergeWithLocal(dbRecipes, localRecipes).sort((a, b) => a.name.localeCompare(b.name));
         StorageService.saveRecipesRaw(userId, merged);
         return merged;
       }
     } catch (e) {
-      console.warn('Supabase getAllRecipes fallback local:', e);
+      console.warn('Supabase getAllRecipes warning (usando local):', e);
     }
     return localRecipes;
   }
@@ -342,13 +359,20 @@ export class SupabaseService {
         .upsert(toDbReceita(savedLocal), { onConflict: 'id' })
         .select()
         .single();
-      if (!error && data) {
+      
+      if (error) {
+        console.error('Supabase saveRecipe error:', error);
+        throw new Error(error.message || 'Erro ao salvar receita no Supabase');
+      }
+      
+      if (data) {
         const result = fromDbReceita(data);
         StorageService.saveRecipe(userId, result);
         return result;
       }
-    } catch (err) {
-      console.warn('Supabase saveRecipe warning (salvo localmente):', err);
+    } catch (err: any) {
+      console.error('Falha ao salvar receita no Supabase:', err);
+      throw err;
     }
     return savedLocal;
   }
@@ -356,13 +380,15 @@ export class SupabaseService {
   async deleteRecipe(userId: string, id: string): Promise<void> {
     StorageService.deleteRecipe(userId, id);
     try {
-      await this.sb
+      const { error } = await this.sb
         .from('receitas')
         .delete()
         .eq('id', id)
         .eq('user_id', userId);
+      if (error) throw error;
     } catch (err) {
-      console.warn('Supabase deleteRecipe warning:', err);
+      console.error('Supabase deleteRecipe error:', err);
+      throw err;
     }
   }
 
@@ -376,14 +402,15 @@ export class SupabaseService {
         .select('*')
         .eq('user_id', userId)
         .order('updated_at', { ascending: false });
-      if (!error && data) {
+      if (error) throw error;
+      if (data) {
         const dbLots = (data ?? []).map(fromDbLote);
         const merged = mergeWithLocal(dbLots, localLots).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
         StorageService.saveLotsRaw(userId, merged);
         return merged;
       }
     } catch (e) {
-      console.warn('Supabase getAllLots fallback local:', e);
+      console.warn('Supabase getAllLots warning (usando local):', e);
     }
     return localLots;
   }
@@ -396,11 +423,18 @@ export class SupabaseService {
         .upsert(toDbLote(savedLocal), { onConflict: 'id' })
         .select()
         .single();
-      if (!error && data) {
+      
+      if (error) {
+        console.error('Supabase saveLot error:', error);
+        throw new Error(error.message || 'Erro ao salvar lote no Supabase');
+      }
+      
+      if (data) {
         return fromDbLote(data);
       }
-    } catch (err) {
-      console.warn('Supabase saveLot warning (salvo localmente):', err);
+    } catch (err: any) {
+      console.error('Falha ao salvar lote no Supabase:', err);
+      throw err;
     }
     return savedLocal;
   }
@@ -424,12 +458,15 @@ export class SupabaseService {
         .select('*')
         .eq('user_id', userId)
         .order('name');
-      if (!error && data) {
+      if (error) throw error;
+      if (data) {
         const dbStock = (data ?? []).map(fromDbEstoque);
-        return mergeWithLocal(dbStock, localStock).sort((a, b) => a.name.localeCompare(b.name));
+        const merged = mergeWithLocal(dbStock, localStock).sort((a, b) => a.name.localeCompare(b.name));
+        StorageService.saveStockRaw(userId, merged);
+        return merged;
       }
     } catch (e) {
-      // Fallback
+      console.warn('Supabase getAllStock warning (usando local):', e);
     }
     return localStock;
   }
@@ -442,16 +479,24 @@ export class SupabaseService {
         .upsert(toDbEstoque(savedLocal), { onConflict: 'id' })
         .select()
         .single();
-      if (!error && data) {
+      
+      if (error) {
+        console.error('Supabase saveStockProduct error:', error);
+        throw new Error(error.message || 'Erro ao salvar estoque no Supabase');
+      }
+      
+      if (data) {
         return fromDbEstoque(data);
       }
-    } catch (err) {
-      console.warn('Supabase saveStockProduct warning (salvo localmente):', err);
+    } catch (err: any) {
+      console.error('Falha ao salvar produto no estoque do Supabase:', err);
+      throw err;
     }
     return savedLocal;
   }
 
   async deleteStockProduct(userId: string, id: string): Promise<void> {
+    StorageService.deleteStockProduct(userId, id);
     const { error } = await this.sb
       .from('estoque_produtos')
       .delete()
@@ -620,7 +665,7 @@ export class SupabaseService {
         await this.sb
           .from('estoque_produtos')
           .update({
-            cost_unit: parseFloat(weightedCost.toFixed(2)),
+            cost_unit: parseFloat(weightedCost.toFixed(3)),
             price_sale: lot.finalPrice,
             quantity: totalQty,
             updated_at: now,
@@ -635,7 +680,7 @@ export class SupabaseService {
             user_id: userId,
             name: lot.name,
             lot_id: lot.id,
-            cost_unit: lot.costUnit,
+            cost_unit: parseFloat(lot.costUnit.toFixed(3)),
             price_sale: lot.finalPrice,
             quantity: lot.yieldActual,
             updated_at: now,
